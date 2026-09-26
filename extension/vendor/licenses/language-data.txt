@@ -1,0 +1,4 @@
+@tesseract.js-data/eng 1.0.0
+Package license: MIT
+Source: https://github.com/naptha/tessdata
+Tesseract trained data: https://github.com/tesseract-ocr/tessdata (Apache-2.0)
