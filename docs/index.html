@@ -40,6 +40,7 @@
         <li><strong>The state of the two connected players</strong> (position, paused or playing, speed, how far they can rewind), to keep them in sync, and the commands play, pause and seek on those players.</li>
         <li><strong>Still frames of the connected videos</strong>, to find and read the on-screen clocks. Frames are processed in memory by a text-recognition engine bundled with the extension (Tesseract.js) and discarded right away. They are never saved or uploaded.</li>
         <li>If a player doesn’t let its image be read, the extension can ask Chrome for a capture of that tab. Chrome shows its own picker; the capture is used only to read the clock, in memory, and ends when you stop it or close the panel.</li>
+        <li><strong>The reaction’s tab, when you show the creator’s cam over the game.</strong> The tab is captured (picture and sound) and shown only inside the game’s tab, on your screen. Nothing is recorded, saved or sent. It ends when you remove the cam, close either tab or close the panel.</li>
       </ul>
 
       <h2>What is stored</h2>
@@ -49,6 +50,7 @@
       <ul>
         <li><strong>tabs</strong>: list your tabs so you can pick the videos.</li>
         <li><strong>scripting</strong> and <strong>access to the sites you connect</strong>: read and control the video players on those sites. Access is requested per site, only when you click Connect (or allow an embedded player), and you can remove it at any time in the extension’s settings.</li>
+        <li><strong>tabCapture</strong> and <strong>activeTab</strong>: show the creator’s cam over the game. Chrome only allows capturing a tab after you click the extension’s icon on it.</li>
         <li><strong>storage</strong>: remember your language.</li>
       </ul>
 
@@ -73,6 +75,7 @@
         <li><strong>O estado dos dois players conectados</strong> (posição, pausado ou tocando, velocidade, quanto dá para voltar), para mantê-los sincronizados, e os comandos de reproduzir, pausar e avançar/voltar nesses players.</li>
         <li><strong>Quadros dos vídeos conectados</strong>, para encontrar e ler os relógios na tela. Os quadros são processados na memória por um mecanismo de reconhecimento de texto incluído na extensão (Tesseract.js) e descartados em seguida. Nunca são salvos nem enviados.</li>
         <li>Se um player não deixa ler a imagem, a extensão pode pedir ao Chrome uma captura daquela aba. O Chrome mostra o próprio seletor; a captura serve só para ler o relógio, na memória, e termina quando você a encerra ou fecha o painel.</li>
+        <li><strong>A aba do react, quando você mostra a cam do criador no jogo.</strong> A aba é capturada (imagem e som) e exibida só dentro da aba do jogo, na sua tela. Nada é gravado, salvo ou enviado. Termina quando você tira a cam, fecha uma das abas ou fecha o painel.</li>
       </ul>
 
       <h2>O que fica guardado</h2>
@@ -82,6 +85,7 @@
       <ul>
         <li><strong>tabs</strong>: listar suas abas para você escolher os vídeos.</li>
         <li><strong>scripting</strong> e <strong>acesso aos sites que você conectar</strong>: ler e controlar os players de vídeo desses sites. O acesso é pedido por site, só quando você clica em Conectar (ou permite um player incorporado), e pode ser removido a qualquer momento nas configurações da extensão.</li>
+        <li><strong>tabCapture</strong> e <strong>activeTab</strong>: mostrar a cam do criador no jogo. O Chrome só permite capturar uma aba depois que você clica no ícone da extensão nela.</li>
         <li><strong>storage</strong>: lembrar o seu idioma.</li>
       </ul>
 

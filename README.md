@@ -18,6 +18,7 @@ It doesn't matter if the creator watches on one service and you on another: what
 - **Keeps both videos visible:** "Put side by side" gives each video its own window and docks the panel on the right; a hidden or covered video is detected.
 - **Same moment,** for videos without a clock: pause both on the same scene and mark it.
 - **Fine adjustment** in half-second steps, and a **demo** with simulated clocks.
+- **The creator's cam on the game:** pick the cam's area in the reaction and it appears over the game, in the corner you choose or wherever you drag it, also in fullscreen. Each video has its own volume.
 - English, Português and Español; follows Chrome's language, with a menu to change it.
 - **Private:** no account, no server, no analytics. Frames are read in memory on your computer and discarded. [Privacy policy](https://joaoestella.github.io/SyncVideo/).
 
@@ -42,6 +43,17 @@ The order doesn't matter: whichever video is ahead goes back (or, if its player 
 
 **Keep both videos visible.** Chrome stops drawing videos in background tabs and in fully covered windows, so their clocks can't be read. SyncVideo notices it and tells you which one is hidden.
 
+### The creator's cam over the game
+
+Step **3** puts the creator's cam in a corner of the game, so you can watch the game full size and still see the reaction:
+
+1. **Choose the cam**: draw a box around the creator's camera in video 2.
+2. Go to the reaction's tab and click the SyncVideo icon once (or press **Alt+Shift+S**). Chrome only lets an extension capture a tab after that.
+3. Click **Show on the game**. Pick a corner and a size, or drag the cam anywhere; it follows the game into fullscreen.
+4. Set the **Game** and **Reaction** volumes. While the cam is shown, the reaction's sound comes through the game's tab.
+
+The reaction's tab can then go to the background: being captured, Chrome keeps drawing it, so syncing carries on.
+
 For content without a clock, open **No clock on screen, or the wrong one?**: pause both on the same scene and click **Mark same moment**, or type what each clock shows.
 
 ## Limits
@@ -63,6 +75,7 @@ The extension is plain JavaScript (no build step) in `extension/`:
 | `browser-adapter.js` | Talks to the bridge through `chrome.scripting` |
 | `core.js` | Pure logic: clock parsing, tracking, offset estimation, what to correct and how |
 | `finder.js` | Locates lines of text on a frame so OCR only reads small crops |
+| `pip.js` | Injected in the game's tab: draws the captured cam over the game and plays the reaction's sound at its own volume |
 | `ocr.js` | Local Tesseract.js worker, frame crops, the box editor and the tab-capture fallback |
 | `i18n.js`, `locales/` | Interface languages |
 

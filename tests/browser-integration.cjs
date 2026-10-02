@@ -78,9 +78,10 @@ ms.addEventListener('sourceopen', async () => {
 });
 </script>`;
 const pages = {
-  '/reaction': '<title>Creator live</title><body style="margin:0;background:#000"><video id=v src="/reaction.webm" muted width=960 height=540></video>',
+  '/reaction': '<title>Creator live</title><body style="margin:0;background:#000"><video id=v src="/reaction.webm" muted style="width:100vw;height:56.25vw"></video>',
   '/game': () => `<title>Game page</title><body style="margin:0;background:#222;color:#fff"><h3>Some site</h3><iframe src="http://localhost:${port}/embed" width=960 height=540></iframe>`,
   '/embed': '<body style="margin:0"><video id=v src="/game.webm" muted width=960 height=540></video>',
+  '/game-top': '<title>Game here</title><body style="margin:0;background:#000"><video id=v src="/game.webm" muted style="width:100vw;height:56.25vw"></video>',
   '/live': live
 };
 const server = http.createServer((req, res) => {
@@ -100,15 +101,19 @@ const server = http.createServer((req, res) => {
   res.end(typeof page === 'function' ? page() : page || '');
 });
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const extensionId = dir => [...require('node:crypto').createHash('sha256').update(fs.realpathSync(dir)).digest('hex').slice(0, 32)]
+  .map(c => String.fromCharCode(97 + parseInt(c, 16))).join('');
 
 (async () => {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   port = server.address().port;
   const base = `http://127.0.0.1:${port}`;
   const context = await chromium.launchPersistentContext(path.join(scratch, 'profile'), {
-    executablePath: process.env.CHROMIUM || chromium.executablePath(), headless: true,
-    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, '--autoplay-policy=no-user-gesture-required', '--lang=en-US'],
-    viewport: { width: 1160, height: 950 }
+    executablePath: process.env.CHROMIUM || chromium.executablePath(), headless: !process.env.HEADFUL,
+    // Unpacked extensions get their ID from their path. The allowlist switch
+    // stands in for clicking the icon on the reaction's tab (tab capture).
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, '--autoplay-policy=no-user-gesture-required', '--lang=en-US', '--window-size=1280,900', `--allowlisted-extension-id=${extensionId(extension)}`],
+    viewport: null, // real window sizes, so a tab capture matches the page's own size
   });
   const report = {};
   try {
@@ -161,7 +166,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     await embedded.waitTitle('Videos in sync');
     const syncMs = Date.now() - embedded.started;
     const found = await embedded.labels();
-    assert.match(found[0], /^Clock 2[5-7]:\d\d · change$/, 'game: the match clock, not "Replay 12:30"');
+    assert.match(found[0], /^Clock 2[5-7]:\d\d · change$/, 'game: the match clock, not "Replay 12:30": ' + found[0]);
     assert.match(found[1], /^Clock 2[5-7]:\d\d · change$/, 'reaction: the match clock, not the uptime');
     const synced = await embedded.offset();
     assert.ok(Math.abs(synced + 20) < 0.6, `offset after sync ${synced}`);
@@ -196,6 +201,44 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     const skipped = await jumpy.offset();
     assert.ok(Math.abs(skipped + 20) < 0.8, `offset after the reaction skipped ahead ${skipped}`);
     report.liveJump = { detected: true, offsetAfterSkip: +skipped.toFixed(2) };
+
+    // 4. The creator's cam over the game, with the reaction's sound mixed in.
+    const pipCase = await scenario('/game-top', page => page.mainFrame());
+    await pipCase.waitTitle('Videos in sync');
+    const p = pipCase.panel;
+    assert.equal(new URL(await p.evaluate(() => chrome.runtime.getURL(''))).host, extensionId(extension));
+    await p.locator('#pip-pick').click();
+    await p.locator('#crop-dialog').waitFor({ state: 'visible' });
+    const canvas = await p.locator('#crop-canvas').boundingBox();
+    // The "CREATOR CAM" box of the reaction video: (60, 120) to (480, 540) of 1280x720.
+    await p.mouse.move(canvas.x + canvas.width * 60 / 1280, canvas.y + canvas.height * 120 / 720); await p.mouse.down();
+    await p.mouse.move(canvas.x + canvas.width * 480 / 1280, canvas.y + canvas.height * 540 / 720); await p.mouse.up();
+    await p.locator('#crop-save').click();
+    await p.locator('#pip-toggle').click();
+    await pipCase.waitTitle('Cam on the game');
+    const gameTab = await p.evaluate(async () => (await chrome.tabs.query({})).find(tab => tab.url.endsWith('/game-top')).id);
+    const stats = () => p.evaluate(async id => (await chrome.scripting.executeScript({ target: { tabId: id }, func: () => globalThis.__syncVideoPip?.stats() ?? null }))[0].result, gameTab);
+    await sleep(1500);
+    const shown = await stats();
+    if (process.env.SHOTS) { await pipCase.gamePage.screenshot({ path: path.join(process.env.SHOTS, 'pip.png') }); }
+    const videoRect = await pipCase.gamePage.evaluate(() => { const r = document.getElementById('v').getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; });
+    // The cam is #3b2f2f with a little light text: that's its average colour.
+    assert.ok(shown.colour.every((v, i) => Math.abs(v - [0x3b, 0x2f, 0x2f][i]) < 30), `cam colour ${shown.colour}`);
+    assert.ok(shown.box.x + shown.box.width <= videoRect.x + videoRect.width && shown.box.x > videoRect.x + videoRect.width / 2, 'bottom-right of the game');
+    assert.ok(Math.abs(shown.box.width / shown.box.height - 1) < 0.1, 'keeps the cam square: ' + JSON.stringify(shown));
+    await p.locator('[data-corner="top-left"]').click();
+    await sleep(500);
+    const moved = await stats();
+    assert.ok(moved.box.x < videoRect.x + videoRect.width / 2 && moved.box.y < videoRect.y + videoRect.height / 2, 'top-left of the game');
+    await p.locator('#vol-react').fill('30');
+    await p.locator('#vol-main').fill('50');
+    await sleep(400);
+    assert.ok(Math.abs((await stats()).volume - 0.3) < 0.01, 'reaction volume');
+    assert.equal(await pipCase.gamePage.evaluate(() => document.getElementById('v').volume), 0.5);
+    await p.locator('#pip-toggle').click();
+    await pipCase.waitTitle('Cam removed');
+    assert.equal(await stats(), null);
+    report.pip = { box: shown.box, colour: shown.colour, corners: true, volumes: true };
 
     assert.deepEqual(errors, []);
     report.pageErrors = errors;
