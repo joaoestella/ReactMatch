@@ -10,11 +10,13 @@ It doesn't matter if the creator watches on one service and you on another: what
 
 ## Features
 
-- **Find clocks:** looks at a few frames of each video and keeps only the numbers that tick with the video. A score, a static "Replay 12:30" or a stream uptime in h:mm:ss are ignored. If there's more than one clock, you pick it with one click; you can always draw the box by hand.
+- **Finds the clocks:** looks at a few frames of each video and keeps only the numbers that tick with the video. A score, a static "Replay 12:30" or a stream uptime in h:mm:ss are ignored. If there's more than one clock, you pick it with one click; you can always draw the box by hand.
 - **Reads the players directly:** frames come straight from the `<video>` element, so there's no screen-sharing dialog. Players embedded from another site (iframes) work too, after you allow that site. DRM-protected players fall back to a tab capture.
-- **Precise, and calm about it:** each frame carries the player position it was taken at, and several readings are averaged (the clocks only show whole seconds). A blurry frame is skipped; a jump (halftime, replay) stops the adjustments instead of chasing it.
-- **Live players that can't rewind:** if the video that is ahead can't go back, it pauses for exactly the difference and resumes. Players that jump back to live on resume are detected and reported.
-- **Same moment mode,** for videos without a clock: pause both on the same scene and mark it.
+- **Precise, and calm about it:** each frame carries the player position it was taken at, and several readings are averaged (the clocks only show whole seconds). A blurry frame is skipped; when the clocks change for good (halftime, a reset), it syncs again from the new ones.
+- **Either side can be adjusted:** the video that is ahead goes back. If its player can't rewind (a live), it pauses for exactly the difference and resumes; if it even jumps back to live when resumed, the other video skips ahead instead.
+- **One click:** "Sync now" finds the clocks and uses the frames it looked at as the first estimate, so syncing starts in seconds.
+- **Keeps both videos visible:** "Put side by side" gives each video its own window and docks the panel on the right; a hidden or covered video is detected.
+- **Same moment,** for videos without a clock: pause both on the same scene and mark it.
 - **Fine adjustment** in half-second steps, and a **demo** with simulated clocks.
 - English, Português and Español; follows Chrome's language, with a menu to change it.
 - **Private:** no account, no server, no analytics. Frames are read in memory on your computer and discarded. [Privacy policy](https://joaoestella.github.io/SyncVideo/).
@@ -30,11 +32,17 @@ Chrome 116+ (and Chromium browsers such as Edge, Brave and Opera).
 
 ## How to use
 
-1. Open the two videos in tabs and press play on both.
-2. In the panel, choose the creator's live as **A** and your game as **B** (B is the one that gets adjusted), and click **Connect** on each. Chrome asks for access to each site.
-3. Click **Find clocks**, then **Start syncing**.
+1. Open the game and the reaction (or live) in Chrome and press play on both.
+2. Click the SyncVideo icon. The panel opens as a narrow window on the right.
+3. Choose the game as **1** and the reaction as **2**, and click **Connect** on each. Chrome asks for access to each site.
+4. Click **⧉ Put side by side** so each video has its own window and both are visible.
+5. Click **Sync now**. It finds both clocks and starts syncing, usually in a few seconds.
 
-If one side can't rewind, swap the sides so the one you can control is B. For content without a clock, use **Same moment**: pause both at the same scene, click **Mark same moment** and start.
+The order doesn't matter: whichever video is ahead goes back (or, if its player can't rewind, pauses for the difference). If the reaction still feels a little early or late, use the fine adjustment.
+
+**Keep both videos visible.** Chrome stops drawing videos in background tabs and in fully covered windows, so their clocks can't be read. SyncVideo notices it and tells you which one is hidden.
+
+For content without a clock, open **No clock on screen, or the wrong one?**: pause both on the same scene and click **Mark same moment**, or type what each clock shows.
 
 ## Limits
 
@@ -50,7 +58,7 @@ The extension is plain JavaScript (no build step) in `extension/`:
 
 | File | What it does |
 | --- | --- |
-| `panel.js` | The session: connecting tabs, finding and reading clocks, keeping B in sync |
+| `panel.js` | The session: connecting tabs, finding and reading clocks, keeping both videos in sync, arranging windows |
 | `media-bridge.js` | Injected in each frame of a connected tab: lists, controls and grabs frames from `<video>` |
 | `browser-adapter.js` | Talks to the bridge through `chrome.scripting` |
 | `core.js` | Pure logic: clock parsing, tracking, offset estimation, what to correct and how |
