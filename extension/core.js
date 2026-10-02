@@ -134,6 +134,23 @@ export function regionAround(box, aspect = 16 / 9) {
   return { x, y, w: Math.min(1 - x, box.w + padX * 2), h: Math.min(1 - y, box.h + padY * 2) };
 }
 
+// Where a region of a video (0..1 of its picture) is in a capture of the
+// whole tab (0..1 of the visible page), from the video's layout in that page.
+// The picture is letterboxed inside the element unless object-fit says otherwise.
+export function regionInTab(layout, region) {
+  const { rect, videoWidth: vw, videoHeight: vh, viewport, fit } = layout;
+  let x = rect.x, y = rect.y, w = rect.width, h = rect.height;
+  if (vw && vh && fit !== 'fill') {
+    const scale = fit === 'cover' ? Math.max(w / vw, h / vh) : Math.min(w / vw, h / vh);
+    x += (w - vw * scale) / 2; y += (h - vh * scale) / 2;
+    w = vw * scale; h = vh * scale;
+  }
+  const clamp = v => Math.max(0, Math.min(1, v));
+  const left = clamp((x + region.x * w) / viewport.width), top = clamp((y + region.y * h) / viewport.height);
+  const right = clamp((x + (region.x + region.w) * w) / viewport.width), bottom = clamp((y + (region.y + region.h) * h) / viewport.height);
+  return { x: left, y: top, w: Math.max(0.001, right - left), h: Math.max(0.001, bottom - top) };
+}
+
 // Offset to keep between the two players (follower.time - reference.time) so
 // both clocks show the same moment. Each side gives the clock it showed and
 // the player position of that exact frame, so OCR delays don't matter.

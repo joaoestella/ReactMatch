@@ -75,3 +75,16 @@ dialog::backdrop{background:#000a}
 .crop-options{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 12px;color:var(--muted);font-size:12px}
 .crop-options button{border:1px solid var(--line);background:#ffffff08;border-radius:999px;padding:5px 12px;font-size:12px}
 .crop-options button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
+.tag{margin-left:auto;font-size:10.5px;font-weight:500;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 8px}
+.hint.first{margin:0 0 10px}
+.button.accent{color:var(--accent);border-color:#b7f4ce66}
+.button.accent[aria-pressed=true]{background:var(--accent);color:var(--accent-ink)}
+.pip-options{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.corners{display:flex;align-items:center;gap:6px;font-size:12px}
+.corners span{flex:1}
+.corners button{width:30px;height:28px;border:1px solid var(--line);border-radius:7px;background:#0e1520;font-size:14px}
+.corners button[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
+.slider{display:grid;grid-template-columns:70px 1fr 42px;align-items:center;gap:8px;font-size:12px;margin-top:6px}
+.slider input{padding:0;accent-color:var(--accent)}
+.slider output{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+h3.sub{margin:14px 0 2px;font-size:12.5px}

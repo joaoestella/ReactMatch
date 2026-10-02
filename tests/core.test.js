@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseClock, clockFromOCR, clockTarget, decideCorrection, ClockTracker, anchorFromClocks, AnchorEstimator, clockTokens, findClocks, regionAround } from '../extension/core.js';
+import { parseClock, clockFromOCR, clockTarget, decideCorrection, ClockTracker, anchorFromClocks, AnchorEstimator, clockTokens, findClocks, regionAround, regionInTab } from '../extension/core.js';
 import { textBoxes } from '../extension/finder.js';
 
 test('reads long timers and hours; rejects invalid seconds and ambiguous OCR', () => {
@@ -131,4 +131,14 @@ test('text finder marks a line of glyphs and ignores flat or noisy areas', () =>
   const boxes = textBoxes({ data, width, height });
   assert.equal(boxes.length, 1);
   assert.ok(Math.abs(boxes[0].y - 100) <= 1 && Math.abs(boxes[0].h - 20) <= 1 && boxes[0].x <= 50 && boxes[0].x + boxes[0].w >= 115);
+});
+
+test('a region of the video is found in a capture of the whole tab, letterbox included', () => {
+  // 16:9 video in a 1000x800 element at (100, 50) of a 1200x900 page: 1000x562.5, centred vertically.
+  const layout = { rect: { x: 100, y: 50, width: 1000, height: 800 }, videoWidth: 1920, videoHeight: 1080, viewport: { width: 1200, height: 900 }, fit: 'contain' };
+  const r = regionInTab(layout, { x: 0.5, y: 0, w: 0.5, h: 0.5 });
+  assert.ok(Math.abs(r.x - 600 / 1200) < 1e-9 && Math.abs(r.w - 500 / 1200) < 1e-9);
+  assert.ok(Math.abs(r.y - (50 + 118.75) / 900) < 1e-9 && Math.abs(r.h - 281.25 / 900) < 1e-9);
+  const off = regionInTab({ ...layout, rect: { x: 900, y: 50, width: 1000, height: 562.5 } }, { x: 0.5, y: 0, w: 0.5, h: 0.5 });
+  assert.equal(off.x, 1);
 });

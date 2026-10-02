@@ -1,6 +1,6 @@
 import { BrowserAdapter } from './browser-adapter.js';
 import { DemoAdapter } from './demo-adapter.js';
-import { parseClock, formatTime, clockTarget, insideRanges, decideCorrection, ClockTracker, anchorFromClocks, AnchorEstimator, findClocks, regionAround } from './core.js';
+import { parseClock, formatTime, clockTarget, insideRanges, decideCorrection, ClockTracker, anchorFromClocks, AnchorEstimator, findClocks, regionAround, regionInTab } from './core.js';
 import { LocalOCR, loadImage, cropFrame, startTabCapture, selectRegion, scanClocks } from './ocr.js';
 import { t, setLang, getLang, detectLang, applyStatic, getLocale, LANGUAGES } from './i18n.js';
 
@@ -18,6 +18,8 @@ let running = false, busy = false, revision = 0, lastSeek = -Infinity, lastOCR =
 let sourceKeys = null, currentKind = 'timeline', lastPaused = null;
 // First offset estimates, from the frames used to find the clocks.
 let seeds = [];
+// The creator's cam shown over the main video (picture-in-picture).
+const cam = { region: null, on: false, corner: 'bottom-right', size: 0.28, checked: 0 };
 // A video paused on purpose to let the other catch up, and players known to
 // jump back to live when resumed (pausing can't delay those).
 let hold = null, resumed = null, canHold = { reference: true, follower: true };
@@ -59,6 +61,14 @@ function updateControls() {
   $('trim-minus').textContent = `− ${number(0.5)} s`;
   $('trim-plus').textContent = `+ ${number(0.5)} s`;
   for (const role of roles) $(role + '-capture').disabled = !sources[role] || demo;
+  $('pip-pick').disabled = !sources.follower || demo;
+  $('pip-pick').textContent = cam.region ? t('pip.picked') : t('pip.pick');
+  $('pip-toggle').disabled = !connected || demo;
+  $('pip-toggle').textContent = cam.on ? t('pip.hide') : t('pip.show');
+  $('pip-toggle').setAttribute('aria-pressed', String(cam.on));
+  $('vol-main').disabled = !sources.reference || demo;
+  $('vol-react').disabled = !sources.follower || demo;
+  for (const button of document.querySelectorAll('[data-corner]')) button.setAttribute('aria-pressed', String(button.dataset.corner === cam.corner));
 }
 function stop(announce = true) {
   if (hold) adapter.command(sources[hold.role], 'play').catch(() => {});
@@ -111,6 +121,8 @@ async function connect(role, forcedId) {
   const tab = tabList.find(item => item.id === tabId);
   if (!tab) throw new Error(t('error.pickTab'));
   stop(false); clearAnchor();
+  if (cam.on) await hideCam(false);
+  if (role === 'follower') cam.region = null;
   const token = revision;
   dropCapture(role);
   delete sources[role];
@@ -171,7 +183,8 @@ function setAnchor(states, difference) {
 // A side whose tab is in the background (or whose window is covered) shows a
 // frozen picture: Chrome stops drawing it, so its clock can't be read.
 function hiddenSide(states) {
-  return roles.find(role => states[role].hidden);
+  // A tab being captured for the cam keeps drawing even in the background.
+  return roles.find(role => states[role].hidden && !(cam.on && role === 'follower'));
 }
 function showHidden(role) {
   status(t('status.hidden', { side: sideName(role) }), t('status.hidden.detail'), 'warning');
@@ -332,6 +345,7 @@ async function tick() {
     let states = await pair();
     if (token !== revision) return;
     showTimes(states);
+    if (cam.on && performance.now() - cam.checked > 2000) await followCam();
     if (!running) return;
     const ocrMode = currentKind === 'ocr';
     if (roles.some(role => states[role].ad)) {
@@ -600,7 +614,99 @@ async function arrange() {
   status(t('status.arranged'), t('status.arranged.detail'), 'active');
 }
 
-function listen(id, action) { $(id).addEventListener('click', event => Promise.resolve(action(event)).catch(fail)); }
+// ---- The creator's cam over the main video -----------------------------------
+
+// Runs pip.js in the main video's tab (top frame, where the capture can be used).
+async function inMainTab(func, ...args) {
+  const [result] = await chrome.scripting.executeScript({ target: { tabId: sources.reference.tabId, frameIds: [0] }, func, args });
+  return result?.result;
+}
+
+async function pickCam() {
+  const token = revision;
+  const shot = await adapter.command(sources.follower, 'grab', { maxWidth: 1920, type: 'image/jpeg' });
+  if (token !== revision) return false;
+  if (shot.error === 'not-ready') throw new Error(t('error.playToGrab'));
+  if (shot.error || shot.blank) throw new Error(t('grab.protected'));
+  $('crop-title').textContent = t('crop.camTitle');
+  try {
+    const region = await selectRegion($('crop-dialog'), await loadImage(shot.image), { suggested: cam.region });
+    if (!region) return false;
+    cam.region = region;
+  } finally { $('crop-title').textContent = t('crop.title'); }
+  updateControls();
+  if (cam.on) await followCam(true);
+  return true;
+}
+
+// Where the cam is in a capture of the reaction's tab, and where the main
+// video is, both of which can change (layout, theater mode, fullscreen…).
+async function camPlacement() {
+  const [react, main] = await Promise.all([adapter.command(sources.follower, 'layout'), adapter.command(sources.reference, 'layout')]);
+  const target = sources.reference.frameId ? { frameOrigin: main.origin, innerRect: main.rect } : { videoId: sources.reference.videoId };
+  return { crop: regionInTab(react, cam.region), tabAspect: react.viewport.width / react.viewport.height, target };
+}
+
+async function followCam(force = false) {
+  cam.checked = performance.now();
+  const alive = await inMainTab(() => globalThis.__syncVideoPip?.active() ?? false).catch(() => false);
+  if (!alive) { cam.on = false; updateControls(); return; }
+  if (!force && !cam.region) return;
+  const placement = await camPlacement();
+  await inMainTab(options => globalThis.__syncVideoPip.set(options), { ...placement, corner: cam.corner, size: cam.size });
+}
+
+async function showCam() {
+  if (sources.reference.tabId === sources.follower.tabId) throw new Error(t('error.pipSameTab'));
+  if (!cam.region && !(await pickCam())) return;
+  let streamId;
+  try {
+    streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: sources.follower.tabId, consumerTabId: sources.reference.tabId });
+  } catch { throw new Error(t('error.pipInvoke')); }
+  await chrome.scripting.executeScript({ target: { tabId: sources.reference.tabId, frameIds: [0] }, files: ['media-bridge.js', 'pip.js'] });
+  const placement = await camPlacement();
+  const result = await inMainTab(async (id, options) => {
+    try { return { ok: await globalThis.__syncVideoPip.start(id, options) }; } catch (error) { return { error: error.message }; }
+  }, streamId, { ...placement, corner: cam.corner, size: cam.size, volume: Number($('vol-react').value) / 100 });
+  if (!result?.ok) throw new Error(t('error.pipCapture', { message: result?.error || '' }));
+  cam.on = true; cam.checked = performance.now();
+  updateControls();
+  status(t('status.pipOn'), t('status.pipOn.detail'), 'active');
+}
+
+async function hideCam(announce = true) {
+  if (!cam.on) return;
+  cam.on = false;
+  updateControls();
+  await inMainTab(() => globalThis.__syncVideoPip?.stop()).catch(() => {});
+  if (announce) status(t('status.pipOff'), t('status.pipOff.detail'));
+}
+
+async function setVolume(role, value) {
+  $(role === 'reference' ? 'vol-main-value' : 'vol-react-value').textContent = `${value}%`;
+  // With the cam on, the reaction's sound plays from the main tab.
+  if (role === 'follower' && cam.on) await inMainTab(volume => globalThis.__syncVideoPip?.set({ volume }), value / 100);
+  else if (sources[role]) await adapter.command(sources[role], 'volume', value / 100);
+}
+
+function listenCam() {
+  listen('pip-pick', pickCam);
+  listen('pip-toggle', () => (cam.on ? hideCam() : showCam()));
+  for (const button of document.querySelectorAll('[data-corner]')) listen(button, async () => {
+    cam.corner = button.dataset.corner; updateControls();
+    if (cam.on) await followCam(true);
+  });
+  $('pip-size').addEventListener('input', () => {
+    cam.size = Number($('pip-size').value) / 100;
+    $('pip-size-value').textContent = `${$('pip-size').value}%`;
+    if (cam.on) inMainTab(size => globalThis.__syncVideoPip?.set({ size }), cam.size).catch(fail);
+  });
+  for (const [id, role] of [['vol-main', 'reference'], ['vol-react', 'follower']]) {
+    $(id).addEventListener('input', () => setVolume(role, Number($(id).value)).catch(fail));
+  }
+}
+
+function listen(id, action) { (typeof id === 'string' ? $(id) : id).addEventListener('click', event => Promise.resolve(action(event)).catch(fail)); }
 for (const role of roles) {
   listen(role + '-connect', () => connect(role));
   listen(role + '-allow', async () => {
@@ -610,6 +716,8 @@ for (const role of roles) {
   });
   $(role + '-tab').addEventListener('change', () => {
     stop(false); clearAnchor();
+    if (cam.on) hideCam(false).catch(() => {});
+    if (role === 'follower') cam.region = null;
     delete sources[role]; missing[role] = []; showMissing(role);
     dropCapture(role);
     $(role + '-connection').textContent = t('conn.none'); $(role + '-connection').classList.remove('connected');
@@ -624,6 +732,7 @@ for (const role of roles) {
   });
   listen(role + '-capture', () => selectClock(role));
 }
+listenCam();
 listen('refresh', refreshTabs);
 listen('arrange', arrange);
 $('direction').addEventListener('change', () => { stop(false); clearAnchor(); status(t('status.direction'), t('status.direction.detail')); });
@@ -686,7 +795,7 @@ listen('simulate-drift', async () => {
   await adapter.command(sources.follower, 'seek', state.time - 6);
   status(t('status.drift'), running ? t('status.drift.running') : t('status.drift.idle'), 'warning');
 });
-window.addEventListener('pagehide', () => { running = false; revision++; clearCaptures(); ocr.close(); });
+window.addEventListener('pagehide', () => { if (cam.on) hideCam(false).catch(() => {}); running = false; revision++; clearCaptures(); ocr.close(); });
 setInterval(tick, 1000);
 
 // ---- Language ----------------------------------------------------------------

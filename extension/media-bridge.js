@@ -93,11 +93,26 @@
       });
       return { videos: found, origin: location.origin, children: childOrigins() };
     },
+    // The <video> element itself, for pip.js in the same frame.
+    element(id) {
+      return videos.get(id) ?? null;
+    },
     async run(id, operation, value) {
       const video = videos.get(id);
       if (!video?.isConnected) throw new Error('player-changed');
       if (operation === 'snapshot') return read(video, id);
       if (operation === 'grab') return grab(video, value || {});
+      if (operation === 'layout') {
+        // Where the picture is drawn in the page, to find the same spot in a
+        // capture of the whole tab.
+        const r = video.getBoundingClientRect();
+        return { rect: { x: r.x, y: r.y, width: r.width, height: r.height }, videoWidth: video.videoWidth, videoHeight: video.videoHeight, viewport: { width: innerWidth, height: innerHeight }, fit: getComputedStyle(video).objectFit, origin: location.origin, top: window === window.top };
+      }
+      if (operation === 'volume') {
+        video.volume = Math.max(0, Math.min(1, value));
+        if (value > 0) video.muted = false;
+        return read(video, id);
+      }
       if (operation === 'pause') video.pause();
       else if (operation === 'play') {
         try { await video.play(); }

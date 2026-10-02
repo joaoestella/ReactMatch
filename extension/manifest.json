@@ -15,7 +15,9 @@
   "permissions": [
     "tabs",
     "scripting",
-    "storage"
+    "storage",
+    "tabCapture",
+    "activeTab"
   ],
   "optional_host_permissions": [
     "https://*/*",
@@ -33,5 +35,12 @@
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self'; worker-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+S"
+      }
+    }
   }
 }

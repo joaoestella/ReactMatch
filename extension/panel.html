@@ -42,6 +42,22 @@
       <p class="hint" data-i18n="fine.sub"></p>
     </section>
 
+    <section class="step" aria-labelledby="step3">
+      <h2 id="step3"><span class="num">3</span> <span data-i18n="pip.title"></span> <span class="tag" data-i18n="pip.optional"></span></h2>
+      <p class="hint first" data-i18n="pip.hint"></p>
+      <div class="row wrap"><button id="pip-pick" class="button" disabled data-i18n="pip.pick"></button><button id="pip-toggle" class="button accent" disabled data-i18n="pip.show"></button></div>
+      <div class="pip-options">
+        <div class="corners" role="group" data-i18n-aria-label="pip.position"><span data-i18n="pip.position"></span>
+          <button data-corner="top-left" data-i18n-aria-label="pip.topLeft">↖</button><button data-corner="top-right" data-i18n-aria-label="pip.topRight">↗</button><button data-corner="bottom-left" data-i18n-aria-label="pip.bottomLeft">↙</button><button data-corner="bottom-right" aria-pressed="true" data-i18n-aria-label="pip.bottomRight">↘</button>
+        </div>
+        <label class="slider"><span data-i18n="pip.size"></span><input id="pip-size" type="range" min="12" max="50" value="28"><output id="pip-size-value">28%</output></label>
+      </div>
+      <h3 class="sub" data-i18n="audio.title"></h3>
+      <label class="slider"><span data-i18n="audio.main"></span><input id="vol-main" type="range" min="0" max="100" value="100" disabled><output id="vol-main-value">100%</output></label>
+      <label class="slider"><span data-i18n="audio.react"></span><input id="vol-react" type="range" min="0" max="100" value="100" disabled><output id="vol-react-value">100%</output></label>
+      <p class="hint" data-i18n="pip.activeTab"></p>
+    </section>
+
     <details id="advanced" class="step advanced">
       <summary data-i18n="adv.summary"></summary>
       <h3 data-i18n="adv.moment.title"></h3>
@@ -64,7 +80,7 @@
 
   <footer><span data-i18n="top.local"></span> · <a href="https://joaoestella.github.io/SyncVideo/" target="_blank" rel="noopener" data-i18n="privacy.link"></a> · <span id="version"></span></footer>
 
-  <dialog id="crop-dialog"><div class="dialog-header"><div><p class="eyebrow" data-i18n="crop.eyebrow"></p><h2 data-i18n="crop.title"></h2></div><button id="crop-close" class="button small" data-i18n-aria-label="crop.cancel">✕</button></div><p class="hint" data-i18n="crop.hint"></p><canvas id="crop-canvas" data-i18n-aria-label="crop.canvas"></canvas><p id="crop-description" role="status" data-i18n="crop.none"></p><div id="crop-options" class="crop-options" hidden></div><div class="dialog-actions"><button id="crop-full" class="button" data-i18n="crop.full"></button><button id="crop-save" class="button primary" disabled data-i18n="crop.save"></button></div></dialog>
+  <dialog id="crop-dialog"><div class="dialog-header"><div><p class="eyebrow" data-i18n="crop.eyebrow"></p><h2 id="crop-title" data-i18n="crop.title"></h2></div><button id="crop-close" class="button small" data-i18n-aria-label="crop.cancel">✕</button></div><p class="hint" data-i18n="crop.hint"></p><canvas id="crop-canvas" data-i18n-aria-label="crop.canvas"></canvas><p id="crop-description" role="status" data-i18n="crop.none"></p><div id="crop-options" class="crop-options" hidden></div><div class="dialog-actions"><button id="crop-full" class="button" data-i18n="crop.full"></button><button id="crop-save" class="button primary" disabled data-i18n="crop.save"></button></div></dialog>
   <script src="vendor/tesseract/tesseract.min.js"></script>
   <script type="module" src="panel.js"></script>
 </body>
