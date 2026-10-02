@@ -48,6 +48,35 @@ export function decideCorrection({ target, follower, reference, tolerance = 0.85
   return { action: 'seek', target, error };
 }
 
+// Offset to keep between the two players (follower.time - reference.time) so
+// both clocks show the same moment. Each side gives the clock it showed and
+// the player position of that exact frame, so OCR delays don't matter.
+export function anchorFromClocks(reference, follower, direction = 1) {
+  return follower.time + (reference.clock - follower.clock) * direction - reference.time;
+}
+
+// Clocks only show whole seconds, so one reading is off by up to a second.
+// Readings taken at random points within the second average out: this keeps
+// the last few estimates and returns the mean of those close to the median.
+export class AnchorEstimator {
+  constructor(size = 8, need = 3) { this.size = size; this.need = need; this.values = []; }
+  reset() { this.values = []; }
+  push(value) {
+    if (!Number.isFinite(value)) return this.value();
+    this.values.push(value);
+    if (this.values.length > this.size) this.values.shift();
+    return this.value();
+  }
+  value() {
+    if (this.values.length < this.need) return null;
+    const sorted = [...this.values].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const close = this.values.filter(v => Math.abs(v - median) <= 1.2);
+    if (close.length < this.need) return null;
+    return close.reduce((a, b) => a + b, 0) / close.length;
+  }
+}
+
 export class ClockTracker {
   constructor(direction = 1) { this.direction = direction; this.reset(); }
   reset() { this.previous = null; this.good = 0; }

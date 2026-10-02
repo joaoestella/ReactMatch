@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseClock, clockFromOCR, clockTarget, decideCorrection, ClockTracker } from '../extension/core.js';
+import { parseClock, clockFromOCR, clockTarget, decideCorrection, ClockTracker, anchorFromClocks, AnchorEstimator } from '../extension/core.js';
 
 test('reads long timers and hours; rejects invalid seconds and ambiguous OCR', () => {
   assert.equal(parseClock('125:42'), 7542);
@@ -60,4 +60,19 @@ test('accepts countdown clocks and matching playback speed', () => {
   const faster = new ClockTracker();
   faster.push(100, 0, 100, 2); faster.push(104, 2000, 100, 2);
   assert.equal(faster.push(108, 4000, 100, 2).valid, true);
+});
+
+test('anchor comes from each frame\'s own player position, not from when OCR finished', () => {
+  // Reaction shows 25:10 at 40 s; the game shows 25:30 at 50 s. Game must be 10 s behind
+  // the reaction's position (30 s when the reaction is at 40 s).
+  assert.equal(anchorFromClocks({ clock: 1510, time: 40 }, { clock: 1530, time: 50 }), -10);
+  assert.equal(anchorFromClocks({ clock: 100, time: 0 }, { clock: 90, time: 0 }, -1), -10);
+});
+
+test('anchor estimates average out whole-second clocks and ignore outliers', () => {
+  const estimator = new AnchorEstimator();
+  assert.equal(estimator.push(-20.4), null);
+  assert.equal(estimator.push(-19.6), null);
+  assert.ok(Math.abs(estimator.push(-20.1) - -20.033) < 0.01);
+  assert.ok(Math.abs(estimator.push(-35) - -20.033) < 0.01, 'a single misread does not move the anchor');
 });

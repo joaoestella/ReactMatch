@@ -10,9 +10,10 @@ export class DemoAdapter {
     this.last = now;
   }
   async tabs() { return [{ id: 1, title: 'Demonstração · conteúdo original', url: 'demo:original' }, { id: 2, title: 'Demonstração · vídeo de reação', url: 'demo:reaction' }]; }
-  async connect(tabId) { return [await this.command({ tabId, videoId: 'demo' }, 'snapshot')]; }
+  async connect(tabId) { return { videos: [{ ...(await this.command({ tabId, videoId: 'demo' }, 'snapshot')), frameId: 0 }], missing: [] }; }
   async command(source, operation, value) {
     this.step();
+    if (operation === 'grab') return { error: 'demo' };
     const video = this.media[source.tabId];
     if (operation === 'seek') video.time = value;
     if (operation === 'pause') video.paused = true;

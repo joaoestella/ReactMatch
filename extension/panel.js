@@ -1,17 +1,21 @@
 import { BrowserAdapter } from './browser-adapter.js';
 import { DemoAdapter } from './demo-adapter.js';
-import { parseClock, formatTime, clockTarget, insideRanges, decideCorrection, ClockTracker } from './core.js';
-import { LocalOCR, selectCapture, cropFrame } from './ocr.js';
+import { parseClock, formatTime, clockTarget, insideRanges, decideCorrection, ClockTracker, anchorFromClocks, AnchorEstimator } from './core.js';
+import { LocalOCR, loadImage, cropFrame, startTabCapture, selectRegion } from './ocr.js';
 
 const $ = id => document.getElementById(id);
 const roles = ['reference', 'follower'];
 const installed = !!globalThis.chrome?.scripting;
 let adapter = new BrowserAdapter(), demo = false, mode = 'timeline';
-let sources = {}, captures = {}, tabList = [], anchor = null, trim = 0;
+let sources = {}, captures = {}, tabList = [], anchor = null, trim = 0, missing = {};
 let running = false, busy = false, revision = 0, lastSeek = -Infinity, lastOCR = 0;
-let lastStates = null, sourceKeys = null, currentKind = 'timeline';
+let sourceKeys = null, currentKind = 'timeline';
 const ocr = new LocalOCR();
+const estimator = new AnchorEstimator();
 let trackers = { reference: new ClockTracker(), follower: new ClockTracker() };
+
+const direction = () => Number($('direction').value);
+const seconds = value => `${value > 0 ? '+' : ''}${value.toFixed(1).replace('.', ',')}s`;
 
 function status(title, detail, type = '') {
   $('status-title').textContent = title; $('status-detail').textContent = detail;
@@ -22,8 +26,8 @@ function fail(error) {
   status('Precisamos conferir a conexão', error.message || String(error), 'error');
 }
 function resetTrackers() {
-  const direction = Number($('direction').value);
-  trackers = { reference: new ClockTracker(direction), follower: new ClockTracker(direction) };
+  trackers = { reference: new ClockTracker(direction()), follower: new ClockTracker(direction()) };
+  estimator.reset();
   lastOCR = 0;
 }
 function both() { return !!sources.reference && !!sources.follower; }
@@ -35,7 +39,7 @@ function updateControls() {
   $('start').textContent = running ? 'Parar acompanhamento' : 'Iniciar acompanhamento →';
   $('read-clocks').disabled = !hasOCR() || demo;
   $('clear-captures').hidden = !Object.keys(captures).length;
-  $('trim-value').textContent = `${trim > 0 ? '+' : ''}${trim.toFixed(1).replace('.', ',')}s`;
+  $('trim-value').textContent = seconds(trim).replace('+0,0s', '0,0s');
   for (const role of roles) $(role + '-capture').disabled = !sources[role] || demo || mode !== 'clock';
 }
 function stop(announce = true) {
@@ -48,15 +52,19 @@ function clearAnchor() {
   $('anchor-label').textContent = 'Referência ainda não definida';
   resetTrackers(); updateControls();
 }
+function dropCapture(role) {
+  const capture = captures[role];
+  if (capture?.stream) { capture.stream.getTracks().forEach(track => track.stop()); capture.video.srcObject = null; }
+  delete captures[role];
+  $(role + '-capture').textContent = 'Selecionar relógio';
+}
 function clearCaptures() {
-  for (const capture of Object.values(captures)) { capture.stream.getTracks().forEach(track => track.stop()); capture.video.srcObject = null; }
-  captures = {};
-  for (const role of roles) $(role + '-capture').textContent = 'Selecionar relógio';
+  for (const role of roles) dropCapture(role);
   updateControls();
 }
 
 async function refreshTabs() {
-  tabList = demo ? await adapter.tabs() : installed ? await adapter.tabs() : [];
+  tabList = demo || installed ? await adapter.tabs() : [];
   for (const role of roles) {
     const select = $(role + '-tab');
     const selected = select.value;
@@ -67,34 +75,58 @@ async function refreshTabs() {
   if (!installed && !demo) status('Experimente a demonstração', 'Para conectar abas reais, carregue a pasta extension no Chrome. O guia acompanha o projeto.');
 }
 
+const host = origin => new URL(origin).hostname;
+const sameVideo = (a, b) => a && b && a.tabId === b.tabId && a.frameId === b.frameId && a.videoId === b.videoId;
+
+function showMissing(role) {
+  const list = missing[role] || [];
+  $(role + '-allow').hidden = !list.length;
+  $(role + '-allow').textContent = `Permitir o player de ${list.map(host).join(', ')}`;
+}
+
 async function connect(role, forcedId) {
   const tabId = forcedId ?? Number($(role + '-tab').value);
   const tab = tabList.find(t => t.id === tabId);
   if (!tab) throw new Error('Selecione uma aba primeiro.');
   stop(false); clearAnchor();
   const token = revision;
-  if (captures[role]) { captures[role].stream.getTracks().forEach(t => t.stop()); delete captures[role]; }
+  dropCapture(role);
+  delete sources[role];
   if (!demo) {
     const url = new URL(tab.url);
     const granted = await chrome.permissions.request({ origins: [`${url.protocol}//${url.hostname}/*`] });
     if (token !== revision) return;
     if (!granted) throw new Error('A permissão para este site não foi concedida. Você pode tentar novamente.');
   }
-  const videos = await adapter.connect(tabId);
+  const found = await adapter.connect(tabId);
   if (token !== revision) return;
+  missing[role] = found.missing;
+  showMissing(role);
   const other = role === 'reference' ? 'follower' : 'reference';
-  const available = videos.filter(video => sources[other]?.tabId !== tabId || sources[other]?.videoId !== video.id);
-  if (!available.length) throw new Error('Escolha dois vídeos diferentes. Essa aba já está conectada do outro lado.');
-  sources[role] = { tabId, videoId: available[0].id };
+  const available = found.videos
+    .map(video => ({ ...video, source: { tabId, frameId: video.frameId, videoId: video.id } }))
+    .filter(video => !sameVideo(video.source, sources[other]));
+  if (!available.length) {
+    if (found.missing.length) {
+      status('O vídeo está em um player de outro site', `Esta página usa um player de ${found.missing.map(host).join(', ')}. Clique em “${$(role + '-allow').textContent}”.`, 'warning');
+      return;
+    }
+    if (found.videos.length) throw new Error('Escolha dois vídeos diferentes. Essa aba já está conectada do outro lado.');
+    throw new Error('Nenhum vídeo encontrado. Dê play na página e tente novamente.');
+  }
+  sources[role] = available[0].source;
   $(role + '-tab').value = String(tabId);
   const select = $(role + '-player');
-  select.replaceChildren(...available.map((video, index) => new Option(`Vídeo ${index + 1} · ${formatTime(video.time)} / ${formatTime(video.duration)}`, video.id)));
+  select.replaceChildren(...available.map((video, index) => {
+    const option = new Option(`Vídeo ${index + 1} · ${formatTime(video.time)} / ${formatTime(video.duration)}`, String(index));
+    option.dataset.source = JSON.stringify(video.source);
+    return option;
+  }));
   select.hidden = available.length === 1;
   document.querySelector(`[for="${role}-player"]`).hidden = select.hidden;
   $(role + '-title').textContent = tab.title;
   $(role + '-connection').textContent = demo ? 'Simulado' : 'Conectado';
   $(role + '-connection').classList.add('connected');
-  $(role + '-capture').textContent = 'Selecionar relógio';
   $(role + '-info').textContent = demo ? 'Relógio simulado para experimentar.' : 'Player conectado. Disponibilidade de ajuste será conferida.';
   updateControls();
   status(both() ? 'Escolha seu ponto de encontro' : 'Primeiro vídeo conectado', both() ? 'Alinhe os vídeos e marque a referência, ou use os relógios.' : 'Conecte o outro vídeo para continuar.');
@@ -106,7 +138,6 @@ async function pair() {
   return { reference, follower };
 }
 function showTimes(states) {
-  lastStates = states;
   for (const role of roles) {
     $(role + '-time').textContent = formatTime(states[role].time);
     $(role + '-info').textContent = `${demo ? 'Simulado · ' : ''}${states[role].paused ? 'Pausado' : 'Reproduzindo'} · ${states[role].ranges.length ? 'Possui trecho navegável' : 'Sem trecho navegável'}`;
@@ -117,6 +148,86 @@ function setAnchor(states, difference) {
   sourceKeys = { reference: states.reference.source, follower: states.follower.source };
   $('anchor-label').textContent = 'Referência definida nesta sessão';
   updateControls();
+}
+
+// ---- Reading the clocks ----------------------------------------------------
+
+const GRAB_ERRORS = {
+  'not-ready': 'Dê play no vídeo para a imagem carregar.',
+  protected: 'Este player não deixa ler a imagem diretamente.'
+};
+
+// One still of the clock region of a side, with the player position of that frame.
+async function shoot(role) {
+  const capture = captures[role];
+  if (capture.kind === 'video') {
+    const shot = await adapter.command(sources[role], 'grab', { region: capture.region, maxWidth: 1600, minHeight: 90, type: 'image/png' });
+    if (shot.error) return { error: GRAB_ERRORS[shot.error] || shot.error };
+    return { image: shot.image, time: shot.time, paused: shot.paused };
+  }
+  const state = await adapter.command(sources[role], 'snapshot');
+  return { image: cropFrame(capture), time: state.time, paused: state.paused };
+}
+
+async function readPairClocks(token) {
+  // Both stills are taken before OCR starts, and each carries its own player
+  // position, so the time spent reading never turns into an offset.
+  const shots = await Promise.all(roles.map(shoot));
+  if (token !== revision) return null;
+  const failed = shots.find(shot => shot.error);
+  if (failed) return { error: failed.error };
+  const readings = {};
+  for (let i = 0; i < roles.length; i++) readings[roles[i]] = { ...(await ocr.read(shots[i].image)), time: shots[i].time, paused: shots[i].paused };
+  if (token !== revision) return null;
+  for (const role of roles) {
+    $(role + '-capture').textContent = readings[role].value === null ? 'Relógio ilegível · trocar' : `Relógio ${formatTime(readings[role].value)} · trocar`;
+  }
+  return { readings };
+}
+
+async function ocrTick(token) {
+  if (performance.now() - lastOCR < 1500) return;
+  lastOCR = performance.now();
+  const result = await readPairClocks(token);
+  if (!result || token !== revision || !running) return;
+  if (result.error) { status('Não consegui ler o relógio', result.error, 'warning'); return; }
+  const { readings } = result;
+  // Clocks are checked against the player's own timeline: one second of video
+  // must move the clock by one second, whatever the playback speed.
+  const checks = roles.map(role => trackers[role].push(readings[role].value, readings[role].time * 1000, readings[role].confidence, 1));
+  if (checks.some(check => !check.valid)) {
+    if (anchor === null) status('Confirmando os relógios', checks.find(check => !check.valid).reason, 'warning');
+    return;
+  }
+  const value = estimator.push(anchorFromClocks(
+    { clock: readings.reference.value, time: readings.reference.time },
+    { clock: readings.follower.value, time: readings.follower.time }, direction()));
+  if (value === null) return;
+  if (anchor !== null && Math.abs(value - anchor) > 30) {
+    stop(false); clearAnchor();
+    status('Os relógios mudaram de repente', 'Pode ser intervalo, replay ou troca de conteúdo. Confira os dois relógios e inicie de novo.', 'warning');
+    return;
+  }
+  if (anchor === null) {
+    const states = await pair();
+    if (token !== revision) return;
+    setAnchor(states, value);
+  } else anchor = value;
+}
+
+// ---- Keeping the videos together -------------------------------------------
+
+async function applyTarget(target, states, token) {
+  const result = decideCorrection({ target, ...states, tolerance: currentKind === 'ocr' ? 1 : 0.85, lastSeek, now: performance.now() });
+  if (token !== revision || !running) return;
+  if (result.action === 'seek') {
+    await adapter.command(sources.follower, 'seek', result.target);
+    lastSeek = performance.now();
+    if (token !== revision) return;
+    status('Ajustando o vídeo B', `Correção de ${seconds(result.error)}. Conferindo a sincronização…`, 'active');
+  } else if (result.action === 'aligned') {
+    status('Vídeos acompanhando juntos', `Diferença estimada de ${Math.abs(result.error).toFixed(1).replace('.', ',')}s${demo ? ' · demonstração' : ''}.`, 'active');
+  } else status(result.action === 'unavailable' ? 'Esse trecho não está disponível' : 'Aguardando uma referência segura', result.reason, 'warning');
 }
 
 async function calibrate() {
@@ -130,13 +241,12 @@ async function calibrate() {
   if (mode === 'clock') {
     const a = parseClock($('clock-reference').value), b = parseClock($('clock-follower').value);
     if (a === null || b === null) throw new Error('Informe os dois relógios no formato 25:40 ou 01:25:40.');
-    target = clockTarget(a, b, states.follower.time, Number($('direction').value));
+    target = clockTarget(a, b, states.follower.time, direction());
     if (!insideRanges(target, states.follower.ranges)) throw new Error('O vídeo B não permite chegar a esse momento. Tente inverter as abas ou usar um player com histórico.');
     await adapter.command(sources.follower, 'seek', target);
     if (token !== revision) return;
   }
   setAnchor(states, target - states.reference.time);
-  resetTrackers();
   status('Referência marcada', 'Ao iniciar, os dois vídeos serão reproduzidos. Só o vídeo B receberá ajustes.', 'active');
 }
 
@@ -154,65 +264,13 @@ async function start() {
   if (sourceKeys && roles.some(role => sourceKeys[role] !== states[role].source)) {
     clearAnchor(); throw new Error('O conteúdo mudou. Marque uma nova referência.');
   }
-  sourceKeys = { reference: states.reference.source, follower: states.follower.source };
+  if (anchor !== null) sourceKeys = { reference: states.reference.source, follower: states.follower.source };
   const results = await Promise.allSettled(roles.map(role => adapter.command(sources[role], 'play')));
   if (token !== revision) return;
   const error = results.find(result => result.status === 'rejected');
   if (error) throw error.reason;
   running = true; revision++; resetTrackers(); updateControls();
-  status('Acompanhamento iniciado', currentKind === 'ocr' ? 'Confirmando leituras antes de ajustar. Mantenha os relógios visíveis nas capturas.' : 'Mantendo a relação entre os vídeos. Recalibre se o conteúdo tiver cortes ou pausas internas.', 'active');
-}
-
-async function applyTarget(target, states, token, maxSeek = Infinity) {
-  const result = decideCorrection({ target, ...states, maxSeek, tolerance: currentKind === 'ocr' ? 1.25 : 0.85, lastSeek, now: performance.now() });
-  if (token !== revision || !running) return;
-  if (result.action === 'seek') {
-    await adapter.command(sources.follower, 'seek', result.target);
-    lastSeek = performance.now();
-    if (token !== revision) return;
-    status('Ajustando o vídeo B', `Correção de ${result.error > 0 ? '+' : ''}${result.error.toFixed(1).replace('.', ',')}s. Conferindo a sincronização…`, 'active');
-  } else if (result.action === 'aligned') {
-    status('Vídeos acompanhando juntos', `Diferença estimada de ${Math.abs(result.error).toFixed(1).replace('.', ',')}s${demo ? ' · demonstração' : ''}.`, 'active');
-  } else status(result.action === 'unavailable' ? 'Esse trecho não está disponível' : 'Aguardando uma referência segura', result.reason, 'warning');
-}
-
-async function readPairClocks(token) {
-  const states = await pair();
-  if (token !== revision) return null;
-  const at = performance.now();
-  const frames = roles.map(role => cropFrame(captures[role]));
-  const readings = {};
-  // Both images are sampled before OCR begins; processing delay does not become an offset.
-  for (let i = 0; i < roles.length; i++) readings[roles[i]] = await ocr.read(frames[i]);
-  if (token !== revision) return null;
-  for (const role of roles) {
-    $(role + '-capture').textContent = readings[role].value === null ? 'Relógio ilegível · trocar' : `Relógio ${formatTime(readings[role].value)} · trocar`;
-  }
-  return { states, at, readings };
-}
-
-async function ocrTick(token) {
-  if (performance.now() - lastOCR < 2000) return;
-  lastOCR = performance.now();
-  const result = await readPairClocks(token);
-  if (!result || token !== revision || !running) return;
-  const { states, at, readings } = result;
-  const checks = roles.map(role => trackers[role].push(readings[role].value, at, readings[role].confidence, states[role].rate));
-  if (checks.some(check => !check.valid)) {
-    status('Confirmando os relógios', checks.find(check => !check.valid).reason, 'warning'); return;
-  }
-  const fresh = await pair();
-  if (token !== revision || !running) return;
-  const elapsed = (performance.now() - at) / 1000;
-  if (elapsed > 8 || roles.some(role => {
-    const before = states[role], after = fresh[role];
-    const expected = before.time + (before.paused ? 0 : elapsed * before.rate);
-    return before.source !== after.source || before.paused !== after.paused || after.seeking || after.ready < 3 || Math.abs(after.time - expected) > 0.8;
-  })) {
-    resetTrackers(); status('Aguardando estabilizar', 'O vídeo mudou durante a leitura. Conferindo novamente.', 'warning'); return;
-  }
-  const target = clockTarget(readings.reference.value, readings.follower.value, fresh.follower.time, Number($('direction').value), trim);
-  await applyTarget(target, fresh, token, 30);
+  status('Acompanhamento iniciado', currentKind === 'ocr' ? 'Lendo os relógios direto dos players. Os ajustes começam depois de algumas leituras iguais.' : 'Mantendo a relação entre os vídeos. Recalibre se o conteúdo tiver cortes ou pausas internas.', 'active');
 }
 
 async function tick() {
@@ -220,7 +278,7 @@ async function tick() {
   busy = true;
   const token = revision;
   try {
-    const states = await pair();
+    let states = await pair();
     if (token !== revision) return;
     showTimes(states);
     if (!running) return;
@@ -230,7 +288,12 @@ async function tick() {
     if (states.reference.ad || states.follower.ad) {
       stop(false); clearAnchor(); status('Anúncio detectado', 'Acompanhamento interrompido. Recalibre quando o conteúdo voltar.', 'warning'); return;
     }
-    if (currentKind === 'ocr') { await ocrTick(token); return; }
+    if (currentKind === 'ocr') {
+      await ocrTick(token);
+      if (token !== revision || anchor === null) return;
+      states = await pair();
+      if (token !== revision) return;
+    }
     if (states.reference.ready < 3 || states.follower.ready < 3 || states.reference.seeking || states.follower.seeking) {
       status('Aguardando carregar', 'Os ajustes retornam quando os dois players estabilizarem.', 'warning'); return;
     }
@@ -241,6 +304,40 @@ async function tick() {
     await applyTarget(states.reference.time + anchor + trim, states, token);
   } catch (error) { if (token === revision) fail(error); }
   finally { busy = false; }
+}
+
+// ---- Picking the clock -------------------------------------------------------
+
+async function selectClock(role) {
+  stop(false);
+  const token = revision;
+  status('Abrindo a imagem do player', 'Um instante…');
+  const shot = await adapter.command(sources[role], 'grab', { maxWidth: 1920, type: 'image/jpeg' });
+  if (token !== revision) return;
+  let still, screen = null;
+  if (shot.error === 'not-ready') throw new Error('Dê play no vídeo para a imagem carregar e tente novamente.');
+  if (shot.error || shot.blank) {
+    // Protected or cross-site player: read the tab through a capture instead.
+    status('Escolha a mesma aba', 'Este player não deixa ler a imagem direto. Na janela do Chrome, escolha a aba conectada neste lado.', 'warning');
+    screen = await startTabCapture();
+    still = screen.video;
+  } else still = await loadImage(shot.image);
+  const region = await selectRegion($('crop-dialog'), still, { track: screen?.stream.getVideoTracks()[0] });
+  if (!region || token !== revision) {
+    screen?.stream.getTracks().forEach(t => t.stop());
+    status('Seleção cancelada', 'Você pode tentar novamente ou usar a calibração manual.');
+    return;
+  }
+  dropCapture(role);
+  captures[role] = screen ? { kind: 'screen', region, ...screen } : { kind: 'video', region };
+  if (screen) screen.stream.getVideoTracks()[0].onended = () => {
+    delete captures[role]; stop(false); resetTrackers(); updateControls();
+    $(role + '-capture').textContent = 'Selecionar relógio';
+    status('Captura encerrada', 'Selecione o relógio novamente para continuar a leitura.', 'warning');
+  };
+  $(role + '-capture').textContent = 'Relógio selecionado · trocar';
+  resetTrackers(); updateControls();
+  status('Região selecionada', hasOCR() ? 'Você pode ler os relógios pausados ou iniciar a leitura contínua.' : 'Selecione agora o relógio do outro vídeo.', 'active');
 }
 
 function setMode(value) {
@@ -260,37 +357,26 @@ function setMode(value) {
 function listen(id, action) { $(id).addEventListener('click', event => Promise.resolve(action(event)).catch(fail)); }
 for (const role of roles) {
   listen(role + '-connect', () => connect(role));
+  listen(role + '-allow', async () => {
+    const granted = await chrome.permissions.request({ origins: (missing[role] || []).map(origin => `${origin}/*`) });
+    if (!granted) throw new Error('A permissão para o player não foi concedida. Você pode tentar novamente.');
+    await connect(role, Number($(role + '-tab').value));
+  });
   $(role + '-tab').addEventListener('change', () => {
     stop(false); clearAnchor();
-    delete sources[role];
-    if (captures[role]) { captures[role].stream.getTracks().forEach(t => t.stop()); delete captures[role]; }
+    delete sources[role]; missing[role] = []; showMissing(role);
+    dropCapture(role);
     $(role + '-connection').textContent = 'Não conectado'; $(role + '-connection').classList.remove('connected');
     $(role + '-player').hidden = true; document.querySelector(`[for="${role}-player"]`).hidden = true;
     $(role + '-time').textContent = '—:—'; $(role + '-title').textContent = 'Conecte a aba selecionada';
-    $(role + '-capture').textContent = 'Selecionar relógio';
     updateControls(); status('Conecte a aba selecionada', 'A mudança de aba encerra a referência anterior.');
   });
   $(role + '-player').addEventListener('change', () => {
     stop(false); clearAnchor(); clearCaptures();
-    sources[role].videoId = $(role + '-player').value;
+    sources[role] = JSON.parse($(role + '-player').selectedOptions[0].dataset.source);
     status('Player selecionado', 'Marque uma nova referência para esse vídeo.');
   });
-  listen(role + '-capture', async () => {
-    stop(false);
-    const token = revision;
-    status('Selecione a aba correta', 'Na janela do navegador, escolha a mesma aba conectada neste lado.');
-    const capture = await selectCapture($('crop-dialog'), () => {
-      delete captures[role]; stop(false); resetTrackers(); updateControls();
-      $(role + '-capture').textContent = 'Selecionar relógio';
-      status('Captura encerrada', 'Selecione o relógio novamente para continuar a leitura.', 'warning');
-    });
-    if (!capture) { status('Seleção cancelada', 'Você pode tentar novamente ou usar a calibração manual.'); return; }
-    if (token !== revision) { capture.stream.getTracks().forEach(t => t.stop()); return; }
-    captures[role]?.stream.getTracks().forEach(t => t.stop()); captures[role] = capture;
-    $(role + '-capture').textContent = 'Relógio selecionado · trocar';
-    resetTrackers(); updateControls();
-    status('Região selecionada', hasOCR() ? 'Você pode ler os relógios pausados ou iniciar a leitura contínua.' : 'Selecione agora o relógio do outro vídeo.', 'active');
-  });
+  listen(role + '-capture', () => selectClock(role));
 }
 listen('refresh', refreshTabs);
 listen('mode-timeline', () => setMode('timeline'));
@@ -313,9 +399,10 @@ listen('read-clocks', async () => {
     status('Lendo no seu dispositivo', 'A primeira leitura pode levar alguns segundos.');
     const result = await readPairClocks(token);
     if (!result) return;
+    if (result.error) throw new Error(result.error);
     const fresh = await pair();
     if (token !== revision) return;
-    if (roles.some(role => !fresh[role].paused || Math.abs(fresh[role].time - result.states[role].time) > 0.2)) throw new Error('Os vídeos mudaram durante a leitura. Pause novamente e repita.');
+    if (roles.some(role => !fresh[role].paused || Math.abs(fresh[role].time - before[role].time) > 0.2)) throw new Error('Os vídeos mudaram durante a leitura. Pause novamente e repita.');
     for (const role of roles) {
       if (result.readings[role].value === null || result.readings[role].confidence < 65) throw new Error('Não foi possível ler com confiança. Marque uma região mais nítida ou informe os tempos.');
       $('clock-' + role).value = formatTime(result.readings[role].value);
