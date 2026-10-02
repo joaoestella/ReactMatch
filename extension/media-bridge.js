@@ -35,6 +35,8 @@
       ranges: Array.from({ length: video.seekable.length }, (_, i) => [video.seekable.start(i), video.seekable.end(i)]),
       area: rect.width * rect.height, width: video.videoWidth, height: video.videoHeight,
       source: video.currentSrc || (video.srcObject ? 'stream' : ''),
+      // Chrome stops drawing videos in background tabs and covered windows.
+      hidden: document.visibilityState === 'hidden',
       ad: !!document.querySelector('.html5-video-player.ad-showing'),
       title: video.getAttribute('aria-label') || video.title || document.title,
       sampledAt: Date.now()
@@ -71,9 +73,12 @@
       if (v < min) min = v;
       if (v > max) max = v;
     }
+    // A cheap fingerprint of the picture, to notice when it stops changing.
+    let sig = 0;
+    for (let i = 0; i < pixels.length; i += step) sig = (sig * 31 + pixels[i] + (pixels[i + 1] << 8)) | 0;
     return {
       image: canvas.toDataURL(type, 0.92), width: canvas.width, height: canvas.height,
-      blank: max - min < 6, time, paused: video.paused
+      blank: max - min < 6, time, paused: video.paused, sig
     };
   }
 
