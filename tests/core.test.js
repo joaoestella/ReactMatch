@@ -22,10 +22,17 @@ test('corrects either direction and countdown without confusing media and conten
 const state = { time: 100, ready: 4, rate: 1, seeking: false, ranges: [[50, 200]], paused: false };
 const decide = (target, overrides = {}) => decideCorrection({ target, reference: state, follower: state, now: 10000, ...overrides });
 
-test('refuses unavailable live footage and seekable gaps', () => {
-  assert.equal(decide(30).action, 'unavailable');
-  assert.equal(decide(220).action, 'unavailable');
-  assert.equal(decide(110, { follower: { ...state, ranges: [[0, 100], [120, 200]] } }).action, 'unavailable');
+test('footage a player cannot reach is waited for instead, or refused', () => {
+  const noHold = { reference: false, follower: false };
+  assert.equal(decide(30, { canHold: noHold }).action, 'unavailable');
+  assert.equal(decide(220, { canHold: noHold }).action, 'unavailable');
+  assert.equal(decide(110, { follower: { ...state, ranges: [[0, 100], [120, 200]] }, canHold: noHold }).action, 'unavailable');
+  // B is 70 s ahead and can't rewind: B pauses for 70 s.
+  assert.deepEqual(decide(30), { action: 'hold', role: 'follower', seconds: 70, error: -70 });
+  // B is 120 s behind and can't jump forward: A pauses instead.
+  assert.deepEqual(decide(220), { action: 'hold', role: 'reference', seconds: 120, error: 120 });
+  assert.equal(decide(30, { canHold: { reference: true, follower: false } }).action, 'unavailable');
+  assert.equal(decide(400).action, 'unavailable', 'never pauses for more than 3 minutes');
 });
 
 test('does not chase tiny differences or repeatedly seek, buffer, or ads', () => {

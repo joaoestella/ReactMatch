@@ -10,6 +10,9 @@ let adapter = new BrowserAdapter(), demo = false, mode = 'timeline';
 let sources = {}, captures = {}, tabList = [], anchor = null, trim = 0, missing = {};
 let running = false, busy = false, revision = 0, lastSeek = -Infinity, lastOCR = 0;
 let sourceKeys = null, currentKind = 'timeline';
+// A video paused on purpose to let the other catch up, and players known to
+// jump back to live when resumed (pausing can't delay those).
+let hold = null, resumed = null, canHold = { reference: true, follower: true };
 const ocr = new LocalOCR();
 const estimator = new AnchorEstimator();
 let trackers = { reference: new ClockTracker(), follower: new ClockTracker() };
@@ -45,12 +48,15 @@ function updateControls() {
   for (const role of roles) $(role + '-capture').disabled = !sources[role] || demo || mode !== 'clock';
 }
 function stop(announce = true) {
+  if (hold) adapter.command(sources[hold.role], 'play').catch(() => {});
+  hold = null; resumed = null;
   running = false; revision++;
   updateControls();
   if (announce) status('Acompanhamento parado', 'Você pode ajustar os vídeos e iniciar novamente.');
 }
 function clearAnchor() {
   anchor = null; sourceKeys = null; trim = 0; lastSeek = -Infinity;
+  canHold = { reference: true, follower: true };
   $('anchor-label').textContent = 'Referência ainda não definida';
   resetTrackers(); updateControls();
 }
@@ -220,16 +226,62 @@ async function ocrTick(token) {
 // ---- Keeping the videos together -------------------------------------------
 
 async function applyTarget(target, states, token) {
-  const result = decideCorrection({ target, ...states, tolerance: currentKind === 'ocr' ? 1 : 0.85, lastSeek, now: performance.now() });
+  const result = decideCorrection({ target, ...states, tolerance: currentKind === 'ocr' ? 1 : 0.85, lastSeek, now: performance.now(), canHold });
   if (token !== revision || !running) return;
-  if (result.action === 'seek') {
+  if (result.action === 'hold') {
+    const paused = await adapter.command(sources[result.role], 'pause');
+    if (token !== revision) return;
+    // Resume on a timer of its own: the 1 s tick would overshoot by up to a second.
+    const held = hold = { role: result.role, until: performance.now() + result.seconds * 1000, at: paused.time, seconds: result.seconds };
+    setTimeout(() => { if (hold === held && token === revision) endHold(token).catch(fail); }, result.seconds * 1000);
+    showHold();
+  } else if (result.action === 'seek') {
     await adapter.command(sources.follower, 'seek', result.target);
     lastSeek = performance.now();
     if (token !== revision) return;
     status('Ajustando o vídeo B', `Correção de ${seconds(result.error)}. Conferindo a sincronização…`, 'active');
   } else if (result.action === 'aligned') {
     status('Vídeos acompanhando juntos', `Diferença estimada de ${Math.abs(result.error).toFixed(1).replace('.', ',')}s${demo ? ' · demonstração' : ''}.`, 'active');
+  } else if (result.action === 'unavailable' && roles.some(role => !canHold[role])) {
+    showJumped(roles.find(role => !canHold[role]));
   } else status(result.action === 'unavailable' ? 'Esse trecho não está disponível' : 'Aguardando uma referência segura', result.reason, 'warning');
+}
+
+const sideName = role => role === 'reference' ? 'A' : 'B';
+function showHold() {
+  const left = Math.max(0, (hold.until - performance.now()) / 1000);
+  status(`Segurando o vídeo ${sideName(hold.role)}`, hold.role === 'follower'
+    ? `Este player não deixa voltar, então o vídeo B fica pausado por ${Math.ceil(left)} s até o A alcançar.`
+    : `O vídeo B não consegue avançar, então o A fica pausado por ${Math.ceil(left)} s até o B alcançar.`, 'active');
+}
+
+// Runs while a video is held: resumes it on time, then checks that the player
+// really continued from where it paused (some live players jump to live).
+async function endHold(token) {
+  const { role, at } = hold;
+  hold = null;
+  await adapter.command(sources[role], 'play');
+  if (token !== revision) return;
+  resumed = { role, at, when: performance.now() };
+  lastSeek = performance.now();
+}
+
+function showJumped(role) {
+  status(`O vídeo ${sideName(role)} volta para o ao vivo`, 'Esse player pula para o ao vivo quando é despausado, então não dá para atrasá-lo pausando. Use um player com opção de voltar, ou troque os lados.', 'warning');
+}
+
+// Returns true when the held player jumped instead of continuing.
+async function checkResume(states) {
+  const { role, at, when } = resumed;
+  const elapsed = (performance.now() - when) / 1000;
+  if (elapsed < 1) return false;
+  resumed = null;
+  if (states[role].time - at > elapsed * states[role].rate + 3) {
+    canHold[role] = false;
+    showJumped(role);
+    return true;
+  }
+  return false;
 }
 
 async function calibrate() {
@@ -290,6 +342,8 @@ async function tick() {
     if (states.reference.ad || states.follower.ad) {
       stop(false); clearAnchor(); status('Anúncio detectado', 'Acompanhamento interrompido. Recalibre quando o conteúdo voltar.', 'warning'); return;
     }
+    if (hold) { showHold(); return; }
+    if (resumed && await checkResume(states)) return;
     if (currentKind === 'ocr') {
       await ocrTick(token);
       if (token !== revision || anchor === null) return;

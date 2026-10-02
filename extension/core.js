@@ -32,7 +32,11 @@ export function clockTarget(referenceClock, followerClock, followerPosition, dir
   return followerPosition + (referenceClock - followerClock) * direction + trim;
 }
 
-export function decideCorrection({ target, follower, reference, tolerance = 0.85, maxSeek = Infinity, lastSeek = -Infinity, now = performance.now() }) {
+// When the follower can't seek to the target (a live player with little or no
+// rewind), the video that is ahead can still wait: pausing it for the
+// difference and resuming lines them up, as long as the player keeps its
+// buffer while paused. `canHold` turns that off per side.
+export function decideCorrection({ target, follower, reference, tolerance = 0.85, maxSeek = Infinity, lastSeek = -Infinity, now = performance.now(), canHold = { reference: true, follower: true }, maxHold = 180 }) {
   if (!Number.isFinite(target)) return { action: 'wait', reason: 'Referência ainda não definida.' };
   if (reference.ad || follower.ad) return { action: 'wait', reason: 'Anúncio detectado. Recalibre após o anúncio.' };
   if (reference.ended || follower.ended) return { action: 'wait', reason: 'Um dos vídeos terminou.' };
@@ -43,8 +47,15 @@ export function decideCorrection({ target, follower, reference, tolerance = 0.85
   const error = target - follower.time;
   if (Math.abs(error) <= tolerance) return { action: 'aligned', error };
   if (Math.abs(error) > maxSeek) return { action: 'wait', error, reason: 'Diferença acima de 30s. Pause, confira os relógios e aplique os tempos manualmente.' };
-  if (!insideRanges(target, follower.ranges)) return { action: 'unavailable', error, reason: 'Esse momento não está disponível para voltar ou avançar neste player.' };
   if (now - lastSeek < 3000) return { action: 'wait', error, reason: 'Conferindo o último ajuste…' };
+  if (!insideRanges(target, follower.ranges)) {
+    // error < 0: B is ahead and must wait. error > 0: B can't jump ahead, so A waits.
+    const role = error < 0 ? 'follower' : 'reference';
+    if (canHold[role] && Math.abs(error) <= maxHold && !(role === 'reference' ? reference : follower).paused) {
+      return { action: 'hold', role, seconds: Math.abs(error), error };
+    }
+    return { action: 'unavailable', error, reason: 'Esse momento não está disponível para voltar ou avançar neste player.' };
+  }
   return { action: 'seek', target, error };
 }
 
