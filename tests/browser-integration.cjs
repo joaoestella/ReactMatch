@@ -207,6 +207,11 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     await pipCase.waitTitle('Videos in sync');
     const p = pipCase.panel;
     assert.equal(new URL(await p.evaluate(() => chrome.runtime.getURL(''))).host, extensionId(extension));
+    // Clicking the icon on the reaction's tab lets it be read in the background
+    // (the background script relays the click; here it's sent by hand).
+    const reactionTab = await p.evaluate(async () => (await chrome.tabs.query({})).find(tab => tab.url.endsWith('/reaction')).id);
+    await worker.evaluate(id => chrome.runtime.sendMessage({ type: 'syncvideo-invoked', tabId: id }), reactionTab);
+    await pipCase.waitTitle('Video 2 in the background');
     await p.locator('#pip-pick').click();
     await p.locator('#crop-dialog').waitFor({ state: 'visible' });
     const canvas = await p.locator('#crop-canvas').boundingBox();
@@ -235,10 +240,32 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     await sleep(400);
     assert.ok(Math.abs((await stats()).volume - 0.3) < 0.01, 'reaction volume');
     assert.equal(await pipCase.gamePage.evaluate(() => document.getElementById('v').volume), 0.5);
-    await p.locator('#pip-toggle').click();
+    // The ⋯ menu on the cam: corner, volumes and size, kept in step with the panel.
+    const press = (what, value) => p.evaluate(async ([id, w, v]) => { await chrome.scripting.executeScript({ target: { tabId: id }, func: (a, b) => globalThis.__syncVideoPip.press(a, b), args: [w, v ?? null] }); }, [gameTab, what, value]);
+    await press('open');
+    const opened = await stats();
+    if (process.env.SHOTS) await pipCase.gamePage.screenshot({ path: path.join(process.env.SHOTS, 'pip-menu.png') });
+    assert.ok(opened.menu && opened.menu.width > 200, 'menu open');
+    assert.ok(opened.status, 'menu shows the sync status');
+    await press('corner', 'bottom-left');
+    await press('react', 70);
+    await press('game', 80);
+    await press('size', 40);
+    await sleep(600);
+    const viaMenu = await stats();
+    assert.equal(viaMenu.corner, 'bottom-left');
+    assert.ok(Math.abs(viaMenu.volume - 0.7) < 0.01 && Math.abs(viaMenu.size - 0.4) < 0.01);
+    assert.equal(await p.locator('[data-corner="bottom-left"]').getAttribute('aria-pressed'), 'true');
+    assert.equal(await p.locator('#vol-react').inputValue(), '70');
+    assert.equal(await p.locator('#pip-size').inputValue(), '40');
+    assert.equal(await pipCase.gamePage.evaluate(() => document.getElementById('v').volume), 0.8);
+    await press('resync');
+    await pipCase.waitTitle('Syncing started');
+    await pipCase.waitTitle('Videos in sync');
+    await press('close');
     await pipCase.waitTitle('Cam removed');
     assert.equal(await stats(), null);
-    report.pip = { box: shown.box, colour: shown.colour, corners: true, volumes: true };
+    report.pip = { box: shown.box, colour: shown.colour, corners: true, volumes: true, menu: true, background: true };
 
     assert.deepEqual(errors, []);
     report.pageErrors = errors;

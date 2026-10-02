@@ -18,7 +18,7 @@
   "tab.connect": "Connect",
   "player.found": "Player found",
   "player.option": "Video {n} · {time} / {duration}",
-  "tools.hint": "The order doesn’t matter: SyncVideo holds back whichever video is ahead. Keep both videos visible on screen, because Chrome stops drawing videos in background tabs and covered windows.",
+  "tools.hint": "The order doesn’t matter: SyncVideo holds back whichever video is ahead. To watch with the reaction in a background tab, click the SyncVideo icon on that tab once (or press Alt+Shift+S); otherwise keep both visible.",
   "tools.refresh": "↻ Refresh tabs",
   "help.timeline": "Pause both videos on the same scene, or the point the creator told you, then mark it.",
   "fields.a": "Clock on video A",
@@ -204,7 +204,7 @@
   "adv.times": "Pause both videos, type what each clock shows (or read them) and apply.",
   "status.holding.detail": "Video {side} is ahead and its player can’t rewind, so it pauses for {n} s until the other catches up.",
   "status.hidden": "Video {side} is hidden",
-  "status.hidden.detail": "Chrome stops drawing videos in background tabs and covered windows, so its clock can’t be read. Click “⧉ Put side by side”.",
+  "status.hidden.detail": "Chrome stops drawing videos in background tabs. Click the SyncVideo icon on that tab once (or press Alt+Shift+S) so it can be read in the background, or click “⧉ Put side by side”.",
   "status.reclock": "The clocks changed",
   "status.reclock.detail": "Halftime or a replay? Syncing again from the new clocks.",
   "status.adWait": "Ad on video {side}",
@@ -213,7 +213,7 @@
   "status.arranged.detail": "Each video is now in its own window, both visible. Resize them as you like, as long as neither is covered.",
   "pip.title": "Reaction cam on the game",
   "pip.optional": "optional",
-  "pip.hint": "Watch the game full size with the creator’s cam in a corner. Pick the cam in video 2, then show it on video 1. You can also drag it.",
+  "pip.hint": "Watch the game full size with the creator’s cam in a corner. Pick the cam in video 2, then show it on video 1. The ⋯ button on the cam has the main controls; you can also drag it.",
   "pip.pick": "Choose the cam",
   "pip.picked": "Cam chosen · change",
   "pip.show": "Show on the game",
@@ -235,5 +235,9 @@
   "status.pipOn": "Cam on the game",
   "status.pipOn.detail": "Pick a corner or drag it. The reaction’s sound now comes through the game’s tab, at the volume set here.",
   "status.pipOff": "Cam removed",
-  "status.pipOff.detail": "The reaction plays in its own tab again."
+  "status.pipOff.detail": "The reaction plays in its own tab again.",
+  "pipmenu.menu": "Cam options",
+  "pipmenu.resync": "Sync again",
+  "status.background": "Video {side} in the background",
+  "status.background.detail": "It keeps being read while you watch the other one. Its sound keeps playing."
 }

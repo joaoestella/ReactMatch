@@ -18,7 +18,7 @@
   "tab.connect": "Conectar",
   "player.found": "Reproductor encontrado",
   "player.option": "Video {n} · {time} / {duration}",
-  "tools.hint": "El orden no importa: SyncVideo retiene el video que va adelantado. Deja los dos videos visibles en pantalla, porque Chrome deja de dibujar videos en pestañas de fondo y ventanas tapadas.",
+  "tools.hint": "El orden no importa: SyncVideo retiene el video que va adelantado. Para ver con la reacción en una pestaña de fondo, haz clic una vez en el icono de SyncVideo en esa pestaña (o pulsa Alt+Shift+S); si no, deja los dos visibles.",
   "tools.refresh": "↻ Actualizar pestañas",
   "help.timeline": "Pausa los dos videos en la misma escena, o en el punto que dijo el creador, y márcalo.",
   "fields.a": "Reloj en el video A",
@@ -204,7 +204,7 @@
   "adv.times": "Pausa los dos videos, escribe lo que muestra cada reloj (o léelos) y aplica.",
   "status.holding.detail": "El video {side} va adelantado y su reproductor no puede retroceder, así que se pausa {n} s hasta que el otro lo alcance.",
   "status.hidden": "El video {side} está oculto",
-  "status.hidden.detail": "Chrome deja de dibujar videos en pestañas de fondo y ventanas tapadas, así que su reloj no se puede leer. Haz clic en “⧉ Poner lado a lado”.",
+  "status.hidden.detail": "Chrome deja de dibujar videos en pestañas de fondo. Haz clic una vez en el icono de SyncVideo en esa pestaña (o pulsa Alt+Shift+S) para que se lea en segundo plano, o haz clic en “⧉ Poner lado a lado”.",
   "status.reclock": "Los relojes cambiaron",
   "status.reclock.detail": "¿Descanso o repetición? Sincronizando de nuevo con los nuevos relojes.",
   "status.adWait": "Anuncio en el video {side}",
@@ -213,7 +213,7 @@
   "status.arranged.detail": "Cada video está ahora en su propia ventana, ambos visibles. Cambia su tamaño como quieras, siempre que ninguno quede tapado.",
   "pip.title": "Cámara de la reacción en el partido",
   "pip.optional": "opcional",
-  "pip.hint": "Mira el partido a pantalla completa con la cámara del creador en una esquina. Elige la cámara en el video 2 y muéstrala en el video 1. También puedes arrastrarla.",
+  "pip.hint": "Mira el partido a pantalla completa con la cámara del creador en una esquina. Elige la cámara en el video 2 y muéstrala en el video 1. El botón ⋯ en la cámara tiene los controles principales; también puedes arrastrarla.",
   "pip.pick": "Elegir la cámara",
   "pip.picked": "Cámara elegida · cambiar",
   "pip.show": "Mostrar en el partido",
@@ -235,5 +235,9 @@
   "status.pipOn": "Cámara en el partido",
   "status.pipOn.detail": "Elige una esquina o arrástrala. El sonido de la reacción ahora sale por la pestaña del partido, al volumen que elijas aquí.",
   "status.pipOff": "Cámara quitada",
-  "status.pipOff.detail": "La reacción vuelve a sonar en su propia pestaña."
+  "status.pipOff.detail": "La reacción vuelve a sonar en su propia pestaña.",
+  "pipmenu.menu": "Opciones de la cámara",
+  "pipmenu.resync": "Sincronizar de nuevo",
+  "status.background": "Video {side} en segundo plano",
+  "status.background.detail": "Se sigue leyendo mientras ves el otro. Su sonido sigue sonando."
 }

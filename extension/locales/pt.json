@@ -18,7 +18,7 @@
   "tab.connect": "Conectar",
   "player.found": "Player encontrado",
   "player.option": "Vídeo {n} · {time} / {duration}",
-  "tools.hint": "A ordem não importa: o SyncVideo segura o vídeo que estiver adiantado. Deixe os dois vídeos visíveis na tela, porque o Chrome para de desenhar vídeos em abas de fundo e janelas cobertas.",
+  "tools.hint": "A ordem não importa: o SyncVideo segura o vídeo que estiver adiantado. Para assistir com o react numa aba de fundo, clique uma vez no ícone do SyncVideo nessa aba (ou aperte Alt+Shift+S); senão, deixe os dois visíveis.",
   "tools.refresh": "↻ Atualizar abas",
   "help.timeline": "Pause os dois vídeos na mesma cena, ou no ponto que o criador falou, e marque.",
   "fields.a": "Relógio no vídeo A",
@@ -204,7 +204,7 @@
   "adv.times": "Pause os dois vídeos, digite o que cada relógio mostra (ou leia) e aplique.",
   "status.holding.detail": "O vídeo {side} está adiantado e o player não deixa voltar, então ele fica pausado por {n} s até o outro alcançar.",
   "status.hidden": "O vídeo {side} está escondido",
-  "status.hidden.detail": "O Chrome para de desenhar vídeos em abas de fundo e janelas cobertas, então o relógio não dá para ler. Clique em “⧉ Pôr lado a lado”.",
+  "status.hidden.detail": "O Chrome para de desenhar vídeos em abas de fundo. Clique uma vez no ícone do SyncVideo nessa aba (ou aperte Alt+Shift+S) para ele ser lido em segundo plano, ou clique em “⧉ Pôr lado a lado”.",
   "status.reclock": "Os relógios mudaram",
   "status.reclock.detail": "Intervalo ou replay? Sincronizando de novo pelos novos relógios.",
   "status.adWait": "Anúncio no vídeo {side}",
@@ -213,7 +213,7 @@
   "status.arranged.detail": "Cada vídeo agora está na sua própria janela, os dois visíveis. Redimensione como quiser, desde que nenhum fique coberto.",
   "pip.title": "Cam do react no jogo",
   "pip.optional": "opcional",
-  "pip.hint": "Assista ao jogo em tela cheia com a cam do criador no canto. Escolha a cam no vídeo 2 e mostre no vídeo 1. Dá para arrastar também.",
+  "pip.hint": "Assista ao jogo em tela cheia com a cam do criador no canto. Escolha a cam no vídeo 2 e mostre no vídeo 1. O botão ⋯ na cam tem os controles principais; dá para arrastar também.",
   "pip.pick": "Escolher a cam",
   "pip.picked": "Cam escolhida · trocar",
   "pip.show": "Mostrar no jogo",
@@ -235,5 +235,9 @@
   "status.pipOn": "Cam no jogo",
   "status.pipOn.detail": "Escolha um canto ou arraste. O som do react agora sai pela aba do jogo, no volume que você escolher aqui.",
   "status.pipOff": "Cam removida",
-  "status.pipOff.detail": "O react voltou a tocar na própria aba."
+  "status.pipOff.detail": "O react voltou a tocar na própria aba.",
+  "pipmenu.menu": "Opções da cam",
+  "pipmenu.resync": "Sincronizar de novo",
+  "status.background": "Vídeo {side} em segundo plano",
+  "status.background.detail": "Ele continua sendo lido enquanto você assiste ao outro. O som dele continua tocando."
 }

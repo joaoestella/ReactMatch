@@ -19,7 +19,12 @@ let sourceKeys = null, currentKind = 'timeline', lastPaused = null;
 // First offset estimates, from the frames used to find the clocks.
 let seeds = [];
 // The creator's cam shown over the main video (picture-in-picture).
-const cam = { region: null, on: false, corner: 'bottom-right', size: 0.28, checked: 0 };
+const cam = { region: null, on: false, corner: 'bottom-right', free: null, size: 0.28, checked: 0, wanted: false };
+// Tabs captured only to keep them drawing while in the background, so their
+// clock can still be read (video only, small: their sound keeps playing there).
+const keepAlive = { reference: null, follower: null };
+// Tabs where the user has clicked the icon: Chrome lets us capture those.
+const invoked = new Set();
 // A video paused on purpose to let the other catch up, and players known to
 // jump back to live when resumed (pausing can't delay those).
 let hold = null, resumed = null, canHold = { reference: true, follower: true };
@@ -37,6 +42,12 @@ const seconds = value => `${value > 0.05 ? '+' : ''}${number(Math.abs(value) < 0
 function status(title, detail, type = '') {
   $('status-title').textContent = title; $('status-detail').textContent = detail;
   $('status-dot').className = `dot ${type}`;
+  // The cam's menu shows the same line, so the panel can stay hidden.
+  const line = `${title}${detail ? ` · ${detail}` : ''}`;
+  if (cam.on && line !== cam.statusLine) {
+    cam.statusLine = line;
+    inMainTab(value => globalThis.__syncVideoPip?.set({ status: value }), { text: title, type }).catch(() => {});
+  }
 }
 function fail(error) {
   stop(false);
@@ -122,6 +133,7 @@ async function connect(role, forcedId) {
   if (!tab) throw new Error(t('error.pickTab'));
   stop(false); clearAnchor();
   if (cam.on) await hideCam(false);
+  stopDrawing(role);
   if (role === 'follower') cam.region = null;
   const token = revision;
   dropCapture(role);
@@ -182,13 +194,47 @@ function setAnchor(states, difference) {
 }
 // A side whose tab is in the background (or whose window is covered) shows a
 // frozen picture: Chrome stops drawing it, so its clock can't be read.
+const captured = role => !!keepAlive[role] || (cam.on && role === 'follower');
 function hiddenSide(states) {
-  // A tab being captured for the cam keeps drawing even in the background.
-  return roles.find(role => states[role].hidden && !(cam.on && role === 'follower'));
+  // A tab being captured (for the cam, or to keep it drawing) draws even in the background.
+  return roles.find(role => states[role].hidden && !captured(role));
 }
 function showHidden(role) {
   status(t('status.hidden', { side: sideName(role) }), t('status.hidden.detail'), 'warning');
   $('arrange').classList.add('attention');
+}
+
+// Keeps a background tab drawing by capturing it (tiny, video only), so its
+// clock can be read while you watch the other video. Chrome allows it once
+// the SyncVideo icon was clicked on that tab.
+async function keepDrawing(role) {
+  if (captured(role)) return true;
+  try {
+    const id = await chrome.tabCapture.getMediaStreamId({ targetTabId: sources[role].tabId });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: id, maxWidth: 640, maxHeight: 360, maxFrameRate: 5 } }
+    });
+    const video = document.createElement('video');
+    video.muted = true; video.srcObject = stream;
+    await video.play().catch(() => {});
+    keepAlive[role] = { stream, video, tabId: sources[role].tabId };
+    stream.getVideoTracks()[0].addEventListener('ended', () => { if (keepAlive[role]?.stream === stream) keepAlive[role] = null; });
+    frozen[role] = { sig: null, since: 0 };
+    return true;
+  } catch { return false; }
+}
+function stopDrawing(role) {
+  keepAlive[role]?.stream.getTracks().forEach(track => track.stop());
+  keepAlive[role] = null;
+}
+// A hidden side is kept drawing when possible; otherwise the user is told how.
+async function handleHidden(states) {
+  const hidden = hiddenSide(states);
+  if (!hidden) return false;
+  if (await keepDrawing(hidden)) return false;
+  showHidden(hidden);
+  return true;
 }
 
 // ---- Reading the clocks ----------------------------------------------------
@@ -240,7 +286,7 @@ async function ocrTick(token, states) {
   if (result.error) { status(t('status.cantRead'), result.error, 'warning'); return; }
   const { readings } = result;
   const stuck = roles.find(role => pictureStuck(role, readings[role]));
-  if (stuck) { showHidden(stuck); return; }
+  if (stuck) { if (!(await keepDrawing(stuck))) showHidden(stuck); return; }
   // Clocks are checked against the player's own timeline: one second of video
   // must move the clock by one second, whatever the playback speed.
   const checks = roles.map(role => trackers[role].push(readings[role].value, readings[role].time * 1000, readings[role].confidence, 1));
@@ -359,8 +405,7 @@ async function tick() {
     }
     if (hold) { showHold(); return; }
     if (resumed && checkResume(states)) return;
-    const hidden = hiddenSide(states);
-    if (hidden && ocrMode) { showHidden(hidden); return; }
+    if (ocrMode && await handleHidden(states)) return;
     await mirrorPauses(states);
     if (token !== revision) return;
     if (ocrMode) {
@@ -481,8 +526,8 @@ async function findMissingClocks(token) {
   const sides = roles.filter(role => !captures[role]);
   if (!sides.length) return true;
   const states = await pair();
-  const hidden = hiddenSide(states);
-  if (hidden) { showHidden(hidden); return false; }
+  if (await handleHidden(states)) return false;
+  if (roles.some(role => keepAlive[role])) await sleep(600);
   status(t('status.finding'), t('status.finding.detail'), 'active');
   await Promise.all(sides.map(role => adapter.command(sources[role], 'play')));
   await sleep(400);
@@ -653,23 +698,36 @@ async function followCam(force = false) {
   if (!alive) { cam.on = false; updateControls(); return; }
   if (!force && !cam.region) return;
   const placement = await camPlacement();
-  await inMainTab(options => globalThis.__syncVideoPip.set(options), { ...placement, corner: cam.corner, size: cam.size });
+  await inMainTab(options => globalThis.__syncVideoPip.set(options), { ...placement, ...camLook() });
 }
+// Corner (or dragged position) and size, as last set in the panel or on the cam.
+const camLook = () => ({ corner: cam.corner, size: cam.size, ...(cam.corner === 'custom' && cam.free ? { free: cam.free } : {}) });
+const camLabels = () => ({
+  menu: t('pipmenu.menu'), resync: t('pipmenu.resync'), game: t('audio.main'), react: t('audio.react'), position: t('pip.position'),
+  size: t('pip.size'), close: t('pip.hide'), 'top-left': t('pip.topLeft'), 'top-right': t('pip.topRight'), 'bottom-left': t('pip.bottomLeft'), 'bottom-right': t('pip.bottomRight')
+});
 
 async function showCam() {
   if (sources.reference.tabId === sources.follower.tabId) throw new Error(t('error.pipSameTab'));
   if (!cam.region && !(await pickCam())) return;
+  // One capture per tab: the cam's capture replaces the keep-drawing one.
+  stopDrawing('follower');
   let streamId;
   try {
     streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: sources.follower.tabId, consumerTabId: sources.reference.tabId });
-  } catch { throw new Error(t('error.pipInvoke')); }
+  } catch {
+    // Shown as soon as the icon is clicked on the reaction's tab.
+    cam.wanted = true;
+    throw new Error(t('error.pipInvoke'));
+  }
+  cam.wanted = false;
   await chrome.scripting.executeScript({ target: { tabId: sources.reference.tabId, frameIds: [0] }, files: ['media-bridge.js', 'pip.js'] });
   const placement = await camPlacement();
   const result = await inMainTab(async (id, options) => {
     try { return { ok: await globalThis.__syncVideoPip.start(id, options) }; } catch (error) { return { error: error.message }; }
-  }, streamId, { ...placement, corner: cam.corner, size: cam.size, volume: Number($('vol-react').value) / 100 });
+  }, streamId, { ...placement, ...camLook(), volume: Number($('vol-react').value) / 100, mainVolume: Number($('vol-main').value) / 100, labels: camLabels(), status: { text: t('status.pipOn'), type: 'active' } });
   if (!result?.ok) throw new Error(t('error.pipCapture', { message: result?.error || '' }));
-  cam.on = true; cam.checked = performance.now();
+  cam.on = true; cam.checked = performance.now(); cam.statusLine = '';
   updateControls();
   status(t('status.pipOn'), t('status.pipOn.detail'), 'active');
 }
@@ -682,18 +740,56 @@ async function hideCam(announce = true) {
   if (announce) status(t('status.pipOff'), t('status.pipOff.detail'));
 }
 
-async function setVolume(role, value) {
-  $(role === 'reference' ? 'vol-main-value' : 'vol-react-value').textContent = `${value}%`;
+async function setVolume(role, value, fromCam = false) {
+  const slider = role === 'reference' ? 'vol-main' : 'vol-react';
+  $(slider).value = String(value);
+  $(slider + '-value').textContent = `${value}%`;
   // With the cam on, the reaction's sound plays from the main tab.
-  if (role === 'follower' && cam.on) await inMainTab(volume => globalThis.__syncVideoPip?.set({ volume }), value / 100);
+  if (role === 'follower' && cam.on) { if (!fromCam) await inMainTab(volume => globalThis.__syncVideoPip?.set({ volume }), value / 100); }
   else if (sources[role]) await adapter.command(sources[role], 'volume', value / 100);
+  if (role === 'reference' && cam.on && !fromCam) await inMainTab(mainVolume => globalThis.__syncVideoPip?.set({ mainVolume }), value / 100);
 }
+
+// "Sync again" from the cam's menu: learn the offset again from the clocks,
+// or start from scratch when not syncing.
+async function resync() {
+  if (running && currentKind === 'ocr') {
+    anchor = null; sourceKeys = null; lastSeek = -Infinity; resetTrackers();
+    status(t('status.started'), t('status.started.ocr'), 'active');
+  } else {
+    if (running) stop(false);
+    await start();
+  }
+}
+
+// What the viewer does on the cam (menu and dragging), and the icon clicks
+// relayed by the background script.
+chrome.runtime?.onMessage?.addListener(message => {
+  if (message?.type === 'syncvideo-invoked') {
+    invoked.add(message.tabId);
+    const role = roles.find(r => sources[r]?.tabId === message.tabId);
+    if (!role) return;
+    if (role === 'follower' && cam.wanted) showCam().catch(fail);
+    else keepDrawing(role).then(ok => { if (ok) status(t('status.background', { side: sideName(role) }), t('status.background.detail'), 'active'); });
+    return;
+  }
+  if (message?.type !== 'syncvideo-pip') return;
+  const { action, value } = message;
+  if (action === 'resync') resync().catch(fail);
+  else if (action === 'close') hideCam().catch(fail);
+  else if (action === 'ended') { cam.on = false; updateControls(); }
+  else if (action === 'corner') { cam.corner = value; cam.free = null; updateControls(); }
+  else if (action === 'position') { cam.corner = 'custom'; cam.free = value; updateControls(); }
+  else if (action === 'size') { cam.size = value; $('pip-size').value = String(Math.round(value * 100)); $('pip-size-value').textContent = `${Math.round(value * 100)}%`; }
+  else if (action === 'volume-main') setVolume('reference', Math.round(value * 100), true).catch(fail);
+  else if (action === 'volume-react') setVolume('follower', Math.round(value * 100), true).catch(fail);
+});
 
 function listenCam() {
   listen('pip-pick', pickCam);
   listen('pip-toggle', () => (cam.on ? hideCam() : showCam()));
   for (const button of document.querySelectorAll('[data-corner]')) listen(button, async () => {
-    cam.corner = button.dataset.corner; updateControls();
+    cam.corner = button.dataset.corner; cam.free = null; updateControls();
     if (cam.on) await followCam(true);
   });
   $('pip-size').addEventListener('input', () => {
@@ -717,6 +813,7 @@ for (const role of roles) {
   $(role + '-tab').addEventListener('change', () => {
     stop(false); clearAnchor();
     if (cam.on) hideCam(false).catch(() => {});
+    stopDrawing(role);
     if (role === 'follower') cam.region = null;
     delete sources[role]; missing[role] = []; showMissing(role);
     dropCapture(role);
@@ -795,7 +892,7 @@ listen('simulate-drift', async () => {
   await adapter.command(sources.follower, 'seek', state.time - 6);
   status(t('status.drift'), running ? t('status.drift.running') : t('status.drift.idle'), 'warning');
 });
-window.addEventListener('pagehide', () => { if (cam.on) hideCam(false).catch(() => {}); running = false; revision++; clearCaptures(); ocr.close(); });
+window.addEventListener('pagehide', () => { if (cam.on) hideCam(false).catch(() => {}); for (const role of roles) stopDrawing(role); running = false; revision++; clearCaptures(); ocr.close(); });
 setInterval(tick, 1000);
 
 // ---- Language ----------------------------------------------------------------
