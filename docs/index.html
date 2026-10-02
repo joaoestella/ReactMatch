@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="SyncVideo privacy policy / Política de privacidade. Video frames are read on your device; nothing is sent anywhere.">
+  <title>SyncVideo — Privacy Policy / Política de privacidade</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; line-height: 1.65; }
+    body { margin: 0 auto; max-width: 780px; padding: 32px 22px 64px; }
+    header { border-bottom: 1px solid #8886; padding-bottom: 24px; }
+    h1 { font-size: clamp(1.8rem, 5vw, 2.5rem); line-height: 1.2; }
+    h2 { margin-top: 2rem; line-height: 1.3; font-size: 1.25rem; }
+    a { color: #087c45; text-underline-offset: 3px; overflow-wrap: anywhere; }
+    nav a { display: inline-block; margin-right: 20px; }
+    .summary { padding: 16px 20px; border-left: 4px solid #16a34a; background: #16a34a12; }
+    article + article { margin-top: 56px; padding-top: 24px; border-top: 1px solid #8886; }
+    li + li { margin-top: 6px; }
+    @media (prefers-color-scheme: dark) { a { color: #66df9e; } }
+  </style>
+</head>
+<body>
+  <header>
+    <p><strong>SyncVideo</strong></p>
+    <h1>Privacy Policy<br><span lang="pt-BR">Política de privacidade</span></h1>
+    <nav aria-label="Language / Idioma"><a href="#english" lang="en">English</a><a href="#portugues" lang="pt-BR">Português</a></nav>
+  </header>
+  <main>
+    <article id="english" lang="en">
+      <h2>English</h2>
+      <p>Last updated: <time datetime="2026-10-01">October 1, 2026</time>.</p>
+      <p class="summary"><strong>Everything happens on your device.</strong> SyncVideo reads the clocks shown in the videos you connect, on your computer, to keep them in sync. It does not send images, video, browsing data or any other information to the developer or to anyone else. It has no account, no analytics and no server.</p>
+
+      <h2>Operator and contact</h2>
+      <p>This policy describes the SyncVideo extension, maintained by the owner of the <a href="https://github.com/joaoestella/SyncVideo">joaoestella/SyncVideo</a> project. For privacy questions or support, write to <a href="mailto:joaoestella.dev@gmail.com">joaoestella.dev@gmail.com</a>.</p>
+
+      <h2>What the extension handles, and why</h2>
+      <ul>
+        <li><strong>Tab titles and addresses</strong>, only to list your open tabs so you can choose the two videos. They are not stored or sent.</li>
+        <li><strong>The state of the two connected players</strong> (position, paused or playing, speed, how far they can rewind), to keep them in sync, and the commands play, pause and seek on those players.</li>
+        <li><strong>Still frames of the connected videos</strong>, to find and read the on-screen clocks. Frames are processed in memory by a text-recognition engine bundled with the extension (Tesseract.js) and discarded right away. They are never saved or uploaded.</li>
+        <li>If a player doesn’t let its image be read, the extension can ask Chrome for a capture of that tab. Chrome shows its own picker; the capture is used only to read the clock, in memory, and ends when you stop it or close the panel.</li>
+      </ul>
+
+      <h2>What is stored</h2>
+      <p>Only your interface language choice, in the browser’s local extension storage on your device. Removing the extension deletes it.</p>
+
+      <h2>Permissions</h2>
+      <ul>
+        <li><strong>tabs</strong>: list your tabs so you can pick the videos.</li>
+        <li><strong>scripting</strong> and <strong>access to the sites you connect</strong>: read and control the video players on those sites. Access is requested per site, only when you click Connect (or allow an embedded player), and you can remove it at any time in the extension’s settings.</li>
+        <li><strong>storage</strong>: remember your language.</li>
+      </ul>
+
+      <h2>Sharing and limited use</h2>
+      <p>No data is sold, shared or transferred, used for advertising, or used to determine creditworthiness. The use of information complies with the Chrome Web Store User Data Policy, including the Limited Use requirements.</p>
+
+      <h2>Changes</h2>
+      <p>This policy will be updated if the way data is handled changes. The date above identifies the current version.</p>
+    </article>
+
+    <article id="portugues" lang="pt-BR">
+      <h2>Português</h2>
+      <p>Última atualização: <time datetime="2026-10-01">1º de outubro de 2026</time>.</p>
+      <p class="summary"><strong>Tudo acontece no seu dispositivo.</strong> O SyncVideo lê os relógios que aparecem nos vídeos que você conecta, no seu computador, para mantê-los sincronizados. Ele não envia imagens, vídeo, dados de navegação nem qualquer outra informação ao desenvolvedor ou a terceiros. Não tem conta, analytics nem servidor.</p>
+
+      <h2>Responsável e contato</h2>
+      <p>Esta política descreve a extensão SyncVideo, mantida pelo responsável pelo projeto <a href="https://github.com/joaoestella/SyncVideo">joaoestella/SyncVideo</a>. Para dúvidas sobre privacidade ou suporte, escreva para <a href="mailto:joaoestella.dev@gmail.com">joaoestella.dev@gmail.com</a>.</p>
+
+      <h2>O que a extensão usa e para quê</h2>
+      <ul>
+        <li><strong>Títulos e endereços das abas</strong>, só para listar as abas abertas e você escolher os dois vídeos. Não são guardados nem enviados.</li>
+        <li><strong>O estado dos dois players conectados</strong> (posição, pausado ou tocando, velocidade, quanto dá para voltar), para mantê-los sincronizados, e os comandos de reproduzir, pausar e avançar/voltar nesses players.</li>
+        <li><strong>Quadros dos vídeos conectados</strong>, para encontrar e ler os relógios na tela. Os quadros são processados na memória por um mecanismo de reconhecimento de texto incluído na extensão (Tesseract.js) e descartados em seguida. Nunca são salvos nem enviados.</li>
+        <li>Se um player não deixa ler a imagem, a extensão pode pedir ao Chrome uma captura daquela aba. O Chrome mostra o próprio seletor; a captura serve só para ler o relógio, na memória, e termina quando você a encerra ou fecha o painel.</li>
+      </ul>
+
+      <h2>O que fica guardado</h2>
+      <p>Só a sua escolha de idioma da interface, no armazenamento local da extensão no navegador, no seu dispositivo. Remover a extensão apaga essa informação.</p>
+
+      <h2>Permissões</h2>
+      <ul>
+        <li><strong>tabs</strong>: listar suas abas para você escolher os vídeos.</li>
+        <li><strong>scripting</strong> e <strong>acesso aos sites que você conectar</strong>: ler e controlar os players de vídeo desses sites. O acesso é pedido por site, só quando você clica em Conectar (ou permite um player incorporado), e pode ser removido a qualquer momento nas configurações da extensão.</li>
+        <li><strong>storage</strong>: lembrar o seu idioma.</li>
+      </ul>
+
+      <h2>Compartilhamento e uso limitado</h2>
+      <p>Nenhum dado é vendido, compartilhado ou transferido, usado para publicidade ou para avaliar crédito. O uso das informações segue a Política de Dados do Usuário da Chrome Web Store, incluindo os requisitos de Uso Limitado.</p>
+
+      <h2>Alterações</h2>
+      <p>Esta política será atualizada se a forma de tratar dados mudar. A data acima identifica a versão atual.</p>
+    </article>
+  </main>
+</body>
+</html>
