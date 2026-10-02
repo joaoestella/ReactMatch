@@ -180,6 +180,65 @@ export class AnchorEstimator {
   }
 }
 
+// A jump between the two clocks that is a whole number of minutes, and at
+// least 4, is a change of clock convention, not of the videos: one clock
+// restarts at 00:00 for the second half while the other goes on from 45:00,
+// or periods of 10, 12, 15 or 20 minutes are counted differently.
+export function isPeriodShift(diff) {
+  return Math.abs(diff) >= 240 && Math.abs(diff - Math.round(diff / 60) * 60) <= 20;
+}
+
+// Turns raw offset estimates (one per pair of clock readings) into the offset
+// to keep, steadily. Once locked, the offset only gets refined: within one
+// broadcast, the relation between the two players doesn't change, so a jump
+// in what the clocks say is about the clocks (halftime, a creator restarting
+// their own clock late), not the videos.
+//  - jumps of whole minutes (period conventions) are learned and subtracted;
+//  - any other lasting jump is reported as `pending`, for the viewer to accept.
+export class OffsetLock {
+  constructor({ refine = 1.5, confirm = 3 } = {}) {
+    this.refine = refine; this.confirm = confirm;
+    this.estimator = new AnchorEstimator();
+    this.reset();
+  }
+  reset() { this.anchor = null; this.shift = 0; this.pending = null; this.estimator.reset(); }
+  push(raw) {
+    if (!Number.isFinite(raw)) return { anchor: this.anchor, event: null };
+    const value = raw - this.shift;
+    if (this.anchor === null) {
+      this.anchor = this.estimator.push(value);
+      return { anchor: this.anchor, event: this.anchor === null ? null : 'locked' };
+    }
+    const diff = value - this.anchor;
+    if (Math.abs(diff) <= this.refine) {
+      this.pending = null;
+      this.anchor = this.estimator.push(value) ?? this.anchor;
+      return { anchor: this.anchor, event: 'refined' };
+    }
+    if (this.pending && Math.abs(diff - this.pending.diff) <= this.refine) {
+      this.pending.count += 1;
+      this.pending.diff += (diff - this.pending.diff) / this.pending.count;
+    } else this.pending = { diff, count: 1 };
+    if (this.pending.count < this.confirm) return { anchor: this.anchor, event: null };
+    if (isPeriodShift(this.pending.diff)) {
+      const minutes = Math.round(this.pending.diff / 60);
+      this.shift += minutes * 60;
+      this.pending = null;
+      return { anchor: this.anchor, event: 'period', minutes };
+    }
+    return { anchor: this.anchor, event: 'pending', diff: this.pending.diff };
+  }
+  // The viewer says the new relation is the right one.
+  accept() {
+    if (!this.pending) return this.anchor;
+    this.anchor += this.pending.diff;
+    this.pending = null;
+    this.estimator.reset();
+    for (let i = 0; i < this.estimator.need; i++) this.estimator.push(this.anchor);
+    return this.anchor;
+  }
+}
+
 export class ClockTracker {
   constructor(direction = 1) { this.direction = direction; this.reset(); }
   reset() { this.previous = null; this.good = 0; this.unreadable = 0; }

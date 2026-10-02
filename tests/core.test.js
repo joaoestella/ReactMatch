@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseClock, clockFromOCR, clockTarget, decideCorrection, ClockTracker, anchorFromClocks, AnchorEstimator, clockTokens, findClocks, regionAround, regionInTab } from '../extension/core.js';
+import { parseClock, clockFromOCR, clockTarget, decideCorrection, ClockTracker, anchorFromClocks, AnchorEstimator, clockTokens, findClocks, regionAround, regionInTab, OffsetLock, isPeriodShift } from '../extension/core.js';
 import { textBoxes } from '../extension/finder.js';
 
 test('reads long timers and hours; rejects invalid seconds and ambiguous OCR', () => {
@@ -141,4 +141,37 @@ test('a region of the video is found in a capture of the whole tab, letterbox in
   assert.ok(Math.abs(r.y - (50 + 118.75) / 900) < 1e-9 && Math.abs(r.h - 281.25 / 900) < 1e-9);
   const off = regionInTab({ ...layout, rect: { x: 900, y: 50, width: 1000, height: 562.5 } }, { x: 0.5, y: 0, w: 0.5, h: 0.5 });
   assert.equal(off.x, 1);
+});
+
+test('halftime: a clock that restarts at 00:00 while the other goes on is not a jump of the videos', () => {
+  assert.equal(isPeriodShift(-2700), true);
+  assert.equal(isPeriodShift(2712), true);
+  assert.equal(isPeriodShift(-720), true);
+  assert.equal(isPeriodShift(40), false);
+  assert.equal(isPeriodShift(-95), false);
+  const lock = new OffsetLock();
+  for (const raw of [-20.2, -19.8, -20.1]) lock.push(raw);
+  assert.ok(Math.abs(lock.anchor + 20) < 0.3);
+  // Second half: the game shows 2T 00:10 while the creator's clock shows 45:10.
+  const events = [-2720, -2720.3, -2719.8].map(raw => lock.push(raw).event);
+  assert.deepEqual(events, [null, null, 'period']);
+  assert.ok(Math.abs(lock.anchor + 20) < 0.3, 'the videos stay where they were');
+  // Later readings in the new convention just refine the same offset.
+  assert.equal(lock.push(-2720.1).event, 'refined');
+  assert.ok(Math.abs(lock.anchor + 20) < 0.3);
+});
+
+test('a creator restarting their clock late is reported, not followed, until accepted', () => {
+  const lock = new OffsetLock();
+  for (const raw of [-20, -20, -20]) lock.push(raw);
+  lock.push(-60); lock.push(-60.4);
+  const out = lock.push(-59.8);
+  assert.equal(out.event, 'pending');
+  assert.ok(Math.abs(out.diff + 40) < 0.5);
+  assert.equal(lock.anchor, -20);
+  assert.ok(Math.abs(lock.accept() + 60) < 0.5);
+  assert.equal(lock.push(-60.2).event, 'refined');
+  // One bad reading doesn't count as a change.
+  assert.equal(lock.push(-75).event, null);
+  assert.equal(lock.push(-60).event, 'refined');
 });

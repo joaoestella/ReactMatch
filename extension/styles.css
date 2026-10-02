@@ -88,3 +88,4 @@ dialog::backdrop{background:#000a}
 .slider input{padding:0;accent-color:var(--accent)}
 .slider output{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
 h3.sub{margin:14px 0 2px;font-size:12.5px}
+#status-action{margin-top:8px}

@@ -87,6 +87,7 @@
     .dot.active{background:#b7f4ce}.dot.warning{background:#f3d991}.dot.error{background:#ffb59b}
     button.action{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;border-radius:8px;border:1px solid #b7f4ce55;background:#b7f4ce14;color:#b7f4ce;font-size:12px;font-weight:600;cursor:pointer}
     button.action.quiet{border-color:#273144;background:transparent;color:#c4d1e3}
+    button.action[hidden]{display:none}
     button.action:hover{filter:brightness(1.2)}
     .row{display:flex;align-items:center;gap:8px}
     .row input[type=range]{flex:1;min-width:0;accent-color:#b7f4ce}
@@ -110,6 +111,8 @@
     const box = el('div', { class: 'box' }, [canvas, open]);
 
     const dot = el('span', { class: 'dot' });
+    // Shown when the clocks moved apart and the viewer may want to follow them.
+    const clockChoice = el('button', { class: 'action quiet', type: 'button', 'data-action': 'accept-clock', hidden: '' });
     const statusText = el('span');
     const range = (name, min, max) => el('input', { type: 'range', min, max, 'aria-label': labels[name], 'data-name': name });
     const gameRange = range('game', 0, 100), reactRange = range('react', 0, 100), sizeRange = range('size', 12, 50);
@@ -119,6 +122,7 @@
     const menu = el('div', { class: 'menu', role: 'dialog', 'aria-label': labels.menu, hidden: '' }, [
       el('div', { class: 'status' }, [dot, statusText]),
       el('button', { class: 'action', type: 'button', 'data-action': 'resync' }, [icon('resync'), labels.resync]),
+      clockChoice,
       el('div', { class: 'row', title: labels.game }, [icon('game'), gameRange, gameOut]),
       el('div', { class: 'row', title: labels.react }, [icon('react'), reactRange, reactOut]),
       el('div', { class: 'row' }, [el('span', { class: 'label' }, [labels.position]), el('div', { class: 'corners' }, corners)]),
@@ -127,7 +131,7 @@
     ]);
     shadow.append(el('style', {}, [CSS]), box, menu);
     document.documentElement.append(host);
-    return { host, box, canvas, open, menu, dot, statusText, gameRange, reactRange, sizeRange, gameOut, reactOut, sizeOut, corners };
+    return { host, box, canvas, open, menu, dot, statusText, clockChoice, gameRange, reactRange, sizeRange, gameOut, reactOut, sizeOut, corners };
   }
 
   function show(host) {
@@ -232,6 +236,7 @@
     ui.menu.addEventListener('click', event => {
       const action = event.target.closest?.('[data-action]')?.dataset.action;
       if (action === 'resync') tell('resync');
+      if (action === 'accept-clock') tell('accept-clock');
       if (action === 'close') tell('close');
       const corner = event.target.closest?.('[data-corner]')?.dataset.corner;
       if (corner) { pip.corner = corner; renderControls(); place(); tell('corner', corner); }
@@ -273,6 +278,10 @@
     if (Number.isFinite(options.volume)) { pip.volumes.react = options.volume; pip.gain.gain.value = options.volume; }
     if (Number.isFinite(options.mainVolume)) pip.volumes.main = options.mainVolume;
     if (options.status) pip.status = options.status;
+    if ('action' in options) {
+      pip.ui.clockChoice.hidden = !options.action;
+      pip.ui.clockChoice.textContent = options.action || '';
+    }
     renderControls();
     place();
   }

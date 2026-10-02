@@ -1,6 +1,6 @@
 import { BrowserAdapter } from './browser-adapter.js';
 import { DemoAdapter } from './demo-adapter.js';
-import { parseClock, formatTime, clockTarget, insideRanges, decideCorrection, ClockTracker, anchorFromClocks, AnchorEstimator, findClocks, regionAround, regionInTab } from './core.js';
+import { parseClock, formatTime, clockTarget, insideRanges, decideCorrection, ClockTracker, anchorFromClocks, OffsetLock, findClocks, regionAround, regionInTab } from './core.js';
 import { LocalOCR, loadImage, cropFrame, startTabCapture, selectRegion, scanClocks } from './ocr.js';
 import { t, setLang, getLang, detectLang, applyStatic, getLocale, LANGUAGES } from './i18n.js';
 
@@ -31,7 +31,11 @@ let hold = null, resumed = null, canHold = { reference: true, follower: true };
 // Last frame signature per side, to notice a picture that stopped updating.
 let frozen = { reference: { sig: null, since: 0 }, follower: { sig: null, since: 0 } };
 const ocr = new LocalOCR();
-const estimator = new AnchorEstimator();
+// Turns clock readings into a steady offset (see OffsetLock in core.js).
+const lock = new OffsetLock();
+let clocksSeenAt = 0;
+// A message that stays up for a while instead of the usual "in sync" line.
+let notice = null;
 let trackers = { reference: new ClockTracker(), follower: new ClockTracker() };
 
 const direction = () => Number($('direction').value);
@@ -55,7 +59,7 @@ function fail(error) {
 }
 function resetTrackers() {
   trackers = { reference: new ClockTracker(direction()), follower: new ClockTracker(direction()) };
-  estimator.reset();
+  lock.reset(); clocksSeenAt = 0; notice = null; showClockChoice(null);
   frozen = { reference: { sig: null, since: 0 }, follower: { sig: null, since: 0 } };
   lastOCR = 0;
 }
@@ -292,26 +296,50 @@ async function ocrTick(token, states) {
   const checks = roles.map(role => trackers[role].push(readings[role].value, readings[role].time * 1000, readings[role].confidence, 1));
   if (checks.some(check => !check.valid)) {
     if (anchor === null) status(t('status.confirming'), t(`reason.${checks.find(check => !check.valid).reason}`), 'warning');
+    // Halftime, a replay, a stopped clock: keep the offset we have.
+    else if (clocksSeenAt && performance.now() - clocksSeenAt > 15000) notice = { title: t('status.break'), detail: t('status.break.detail'), until: Infinity };
     return;
   }
-  const value = estimator.push(anchorFromClocks(
+  clocksSeenAt = performance.now();
+  if (notice?.until === Infinity) notice = null;
+  const out = lock.push(anchorFromClocks(
     { clock: readings.reference.value, time: readings.reference.time },
     { clock: readings.follower.value, time: readings.follower.time }, direction()));
-  if (value === null) return;
-  if (anchor === null) { setAnchor(states, value); return; }
-  if (Math.abs(value - anchor) > 30) {
-    // Most recent readings agree on a new relation (halftime, the creator
-    // reset their clock…): follow it rather than stopping.
-    status(t('status.reclock'), t('status.reclock.detail'), 'warning');
-    lastSeek = -Infinity;
+  if (out.anchor === null) return;
+  if (anchor === null) { setAnchor(states, out.anchor); return; }
+  anchor = out.anchor;
+  if (out.event === 'period') notice = { title: t('status.period'), detail: t('status.period.detail', { m: Math.abs(out.minutes) }), until: performance.now() + 20000 };
+  showClockChoice(out.event === 'pending' ? out.diff : null);
+}
+
+// The clocks moved apart in a way the videos can't have (the creator restarted
+// their clock late, say). Keep the sync, and offer to follow the clocks.
+function showClockChoice(diff) {
+  const button = $('status-action');
+  if (!button) return;
+  const label = diff === null ? null : t('clock.useNew', { s: seconds(diff) });
+  button.hidden = diff === null;
+  if (label) {
+    button.textContent = label;
+    status(t('status.clockMoved'), t('status.clockMoved.detail', { s: seconds(diff) }), 'warning');
   }
-  anchor = value;
+  if (cam.on && label !== cam.actionLabel) {
+    cam.actionLabel = label;
+    inMainTab(action => globalThis.__syncVideoPip?.set({ action }), label).catch(() => {});
+  }
+}
+function acceptNewClock() {
+  if (!lock.pending) return;
+  anchor = lock.accept();
+  lastSeek = -Infinity;
+  showClockChoice(null);
+  status(t('status.started'), t('status.started.ocr'), 'active');
 }
 
 // ---- Keeping the videos together -------------------------------------------
 
 async function applyTarget(target, states, token) {
-  const result = decideCorrection({ target, ...states, tolerance: currentKind === 'ocr' ? (estimator.values.length >= 6 ? 0.7 : 1) : 0.85, lastSeek, now: performance.now(), canHold });
+  const result = decideCorrection({ target, ...states, tolerance: currentKind === 'ocr' ? (lock.estimator.values.length >= 6 ? 0.7 : 1) : 0.85, lastSeek, now: performance.now(), canHold });
   if (token !== revision || !running) return;
   if (result.action === 'hold') {
     const paused = await adapter.command(sources[result.role], 'pause');
@@ -328,7 +356,8 @@ async function applyTarget(target, states, token) {
     status(t('status.adjusting', { side: sideName(result.role) }), t('status.adjusting.detail', { s: seconds(moved) }), 'active');
   } else if (result.action === 'aligned') {
     $('arrange').classList.remove('attention');
-    status(t('status.synced'), t('status.synced.detail', { s: `${number(Math.abs(result.error))} s` }) + (demo ? ` · ${t('demo.tag')}` : ''), 'active');
+    if (notice && performance.now() < notice.until) status(notice.title, notice.detail, 'active');
+    else status(t('status.synced'), t('status.synced.detail', { s: `${number(Math.abs(result.error))} s` }) + (demo ? ` · ${t('demo.tag')}` : ''), 'active');
   } else if (result.action === 'unavailable' && roles.some(role => !canHold[role])) {
     showJumped(roles.find(role => !canHold[role]));
   } else status(result.action === 'unavailable' ? t('status.unavailable') : t('status.waiting'), t(`reason.${result.reason}`), 'warning');
@@ -443,11 +472,13 @@ async function detect(sidesToCheck, token) {
     if (list.some(shot => shot.paused)) { result[role] = { error: 'paused' }; continue; }
     // The video played but the picture never changed: hidden tab or covered window.
     if (list.every(shot => shot.sig === list[0].sig) && list.at(-1).time - list[0].time > 1.5) { result[role] = { error: 'hidden' }; continue; }
-    // Only lines that held a clock on the first frame are read again later.
+    // The first and last frames are searched in full (a clock missed once is
+    // still found); the middle one only where those found clocks.
     const first = await scanClocks(ocr, list[0].image);
-    const lines = [...new Set(first.map(token => token.line))];
-    const frames = [{ time: list[0].time, tokens: first }];
-    for (const shot of list.slice(1)) frames.push({ time: shot.time, tokens: lines.length ? await scanClocks(ocr, shot.image, lines) : [] });
+    const last = await scanClocks(ocr, list[2].image);
+    const lines = [...new Set([...first, ...last].map(token => token.line))];
+    const middle = lines.length ? await scanClocks(ocr, list[1].image, lines) : [];
+    const frames = [{ time: list[0].time, tokens: first }, { time: list[1].time, tokens: middle }, { time: list[2].time, tokens: last }];
     if (token !== revision) return null;
     result[role] = { clocks: findClocks(frames), last: list.at(-1) };
   }
@@ -455,8 +486,9 @@ async function detect(sidesToCheck, token) {
 }
 
 const regionOf = (clock, shot) => regionAround(clock.box, shot.width / shot.height);
-// One clear clock: the only mm:ss that ticks (an uptime in h:mm:ss doesn't compete).
-const clearChoice = clocks => clocks.length && clocks.filter(clock => clock.parts === clocks[0].parts).length === 1 ? clocks[0] : null;
+// One clear clock: the only mm:ss that ticks. An uptime in h:mm:ss doesn't
+// compete, and is never picked on its own (a live always shows one).
+const clearChoice = clocks => clocks.length && clocks[0].parts === 2 && clocks.filter(clock => clock.parts === 2).length === 1 ? clocks[0] : null;
 
 function useVideoRegion(role, region, label) {
   dropCapture(role);
@@ -481,7 +513,9 @@ async function pickOnStill(role, token, found) {
     still = screen.video;
   } else still = await loadImage(shot.image);
   const options = shot ? clocks.map(clock => ({ label: clock.text, region: regionOf(clock, shot) })) : [];
-  const region = await selectRegion($('crop-dialog'), still, { suggested: options[0]?.region || null, options, track: screen?.stream.getVideoTracks()[0] });
+  // No clock moving at all: often halftime, or a break in the broadcast.
+  const note = found?.clocks && !found.clocks.length ? t('crop.noTicking') : '';
+  const region = await selectRegion($('crop-dialog'), still, { suggested: options[0]?.region || null, options, track: screen?.stream.getVideoTracks()[0], note });
   if (!region || token !== revision) {
     screen?.stream.getTracks().forEach(track => track.stop());
     return false;
@@ -590,8 +624,9 @@ async function start() {
   if (error) throw error.reason;
   running = true; revision++; resetTrackers(); updateControls();
   if (currentKind === 'ocr') {
-    for (const value of seeds) estimator.push(value);
-    if (estimator.value() !== null) setAnchor(states, estimator.value());
+    let out = null;
+    for (const value of seeds) out = lock.push(value);
+    if (out?.anchor != null) setAnchor(states, out.anchor);
   }
   seeds = [];
   status(t('status.started'), currentKind === 'ocr' ? t('status.started.ocr') : t('status.started.timeline'), 'active');
@@ -770,12 +805,17 @@ chrome.runtime?.onMessage?.addListener(message => {
     const role = roles.find(r => sources[r]?.tabId === message.tabId);
     if (!role) return;
     if (role === 'follower' && cam.wanted) showCam().catch(fail);
-    else keepDrawing(role).then(ok => { if (ok) status(t('status.background', { side: sideName(role) }), t('status.background.detail'), 'active'); });
+    else keepDrawing(role).then(ok => {
+      if (!ok) return;
+      notice = { title: t('status.background', { side: sideName(role) }), detail: t('status.background.detail'), until: performance.now() + 8000 };
+      status(notice.title, notice.detail, 'active');
+    });
     return;
   }
   if (message?.type !== 'syncvideo-pip') return;
   const { action, value } = message;
   if (action === 'resync') resync().catch(fail);
+  else if (action === 'accept-clock') acceptNewClock();
   else if (action === 'close') hideCam().catch(fail);
   else if (action === 'ended') { cam.on = false; updateControls(); }
   else if (action === 'corner') { cam.corner = value; cam.free = null; updateControls(); }
@@ -831,6 +871,7 @@ for (const role of roles) {
 }
 listenCam();
 listen('refresh', refreshTabs);
+listen('status-action', acceptNewClock);
 listen('arrange', arrange);
 $('direction').addEventListener('change', () => { stop(false); clearAnchor(); status(t('status.direction'), t('status.direction.detail')); });
 listen('pause-both', async () => {

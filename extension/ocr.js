@@ -129,7 +129,7 @@ export async function startTabCapture() {
 // <video> or a canvas). Resolves to a region in 0..1 coordinates, or null.
 // `suggested` pre-selects a region, e.g. one found automatically.
 // `options` lists other clocks found ({ label, region }), shown as buttons.
-export async function selectRegion(dialog, still, { suggested = null, options = [], track = null } = {}) {
+export async function selectRegion(dialog, still, { suggested = null, options = [], track = null, note = '' } = {}) {
   const sourceWidth = still.videoWidth || still.naturalWidth || still.width;
   const sourceHeight = still.videoHeight || still.naturalHeight || still.height;
   const canvas = document.querySelector('#crop-canvas');
@@ -143,7 +143,7 @@ export async function selectRegion(dialog, still, { suggested = null, options = 
   const save = document.querySelector('#crop-save');
   const description = document.querySelector('#crop-description');
   save.disabled = !region;
-  description.textContent = region ? t('crop.found') : t('crop.none');
+  description.textContent = region ? t('crop.found') : (note || t('crop.none'));
   function render() {
     context.drawImage(frozen, 0, 0);
     if (!region) return;

@@ -28,7 +28,7 @@ fs.writeFileSync(path.join(extension, 'manifest.json'), JSON.stringify(manifest)
 function fixture(name, seconds, clockStart, overlay) {
   const font = ['/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 'C\\:/Windows/Fonts/arialbd.ttf'].find(f => fs.existsSync(f.replace('\\', ''))) || 'DejaVuSans-Bold.ttf';
   const clock = start => `%{eif\\:floor((t+${start})/60)\\:d\\:2}\\:%{eif\\:mod(floor(t+${start})\\,60)\\:d\\:2}`;
-  const filters = ['format=yuv420p', 'noise=alls=10:allf=t', ...overlay(font, clock(clockStart))].join(',');
+  const filters = ['format=yuv420p', 'noise=alls=10:allf=t', ...overlay(font, clock(clockStart), clock)].join(',');
   const script = path.join(scratch, `${name}.txt`);
   fs.writeFileSync(script, filters);
   const out = path.join(scratch, `${name}.webm`);
@@ -52,8 +52,26 @@ const reaction = fixture('reaction', 120, 1480, (font, clock) => [
   `drawtext=fontfile=${font}:text='${clock}':x=1110:y=650:fontsize=30:fontcolor=white`
 ]);
 
+// Halftime. The game's clock reaches 45:00 at 50 s, disappears for the break,
+// and restarts at 00:00 for the second half at 70 s ("2T 00:00"). The
+// creator's own clock goes on counting from 45:00 when they restart it, 20 s
+// later in their video, like the first half. Same match moments, clocks 45 min apart.
+const gameHalf = fixture('game-half', 120, 2650, (font, first, clock) => [
+  'drawbox=x=40:y=30:w=330:h=56:color=0x101820@0.92:t=fill',
+  `drawtext=fontfile=${font}:text='BRA 1 - 0 ARG':x=56:y=44:fontsize=26:fontcolor=white`,
+  `drawtext=fontfile=${font}:text='${first}':x=270:y=44:fontsize=26:fontcolor=0xffe066:enable='lt(t\,50)'`,
+  `drawtext=fontfile=${font}:text='${clock(-70)}':x=270:y=44:fontsize=26:fontcolor=0xffe066:enable='gte(t\,70)'`
+]);
+const reactionHalf = fixture('reaction-half', 120, 2630, (font, first, clock) => [
+  'drawbox=x=60:y=120:w=420:h=420:color=0x3b2f2f@1:t=fill',
+  `drawtext=fontfile=${font}:text='CREATOR CAM':x=150:y=320:fontsize=30:fontcolor=0xd8c7b0`,
+  'drawbox=x=1080:y=640:w=170:h=50:color=0x0b0b0b@0.85:t=fill',
+  `drawtext=fontfile=${font}:text='${first}':x=1110:y=650:fontsize=30:fontcolor=white:enable='lt(t\,70)'`,
+  `drawtext=fontfile=${font}:text='${clock(2610)}':x=1110:y=650:fontsize=30:fontcolor=white:enable='gte(t\,90)'`
+]);
+
 let port;
-const files = { '/game.webm': game, '/reaction.webm': reaction };
+const files = { '/game.webm': game, '/reaction.webm': reaction, '/game-half.webm': gameHalf, '/reaction-half.webm': reactionHalf };
 // A live player: the file is fed through Media Source as if it were arriving
 // in real time, with only 3 s of rewind. ?jump makes it jump to live on play.
 const live = `<title>Live game</title><body style="margin:0"><video id=v muted width=960 height=540></video><script>
@@ -78,6 +96,8 @@ ms.addEventListener('sourceopen', async () => {
 });
 </script>`;
 const pages = {
+  '/game-half': '<title>Game, halftime</title><body style="margin:0;background:#000"><video id=v src="/game-half.webm" muted style="width:100vw;height:56.25vw"></video>',
+  '/reaction-half': '<title>Creator, halftime</title><body style="margin:0;background:#000"><video id=v src="/reaction-half.webm" muted style="width:100vw;height:56.25vw"></video>',
   '/reaction': '<title>Creator live</title><body style="margin:0;background:#000"><video id=v src="/reaction.webm" muted style="width:100vw;height:56.25vw"></video>',
   '/game': () => `<title>Game page</title><body style="margin:0;background:#222;color:#fff"><h3>Some site</h3><iframe src="http://localhost:${port}/embed" width=960 height=540></iframe>`,
   '/embed': '<body style="margin:0"><video id=v src="/game.webm" muted width=960 height=540></video>',
@@ -121,26 +141,26 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     const panelUrl = `chrome-extension://${new URL(worker.url()).host}/panel.html`;
     const errors = [];
 
-    async function scenario(gamePath, frameOf, arrange = false) {
+    async function scenario(gamePath, frameOf, arrange = false, { reactionPath = '/reaction', gameAt = 50, reactionAt = 40 } = {}) {
       const panel = await context.newPage();
       panel.on('pageerror', error => errors.push(error.message));
       await panel.goto(panelUrl);
       const creator = await context.newPage();
-      await creator.goto(`${base}/reaction`);
+      await creator.goto(`${base}${reactionPath}`);
       const gamePage = await context.newPage();
       await gamePage.goto(`${base}${gamePath}`);
       await creator.waitForFunction(() => document.getElementById('v').readyState >= 3);
-      await creator.evaluate(() => { const v = document.getElementById('v'); v.currentTime = 40; v.play(); });
+      await creator.evaluate(at => { const v = document.getElementById('v'); v.currentTime = at; v.play(); }, reactionAt);
       let frame;
       for (let i = 0; i < 50 && !(frame = frameOf(gamePage)); i++) await sleep(100);
       await frame.waitForFunction(() => window.ready || document.getElementById('v').readyState >= 3, null, { timeout: 20000 });
-      if (!gamePath.startsWith('/live')) await frame.evaluate(() => { const v = document.getElementById('v'); v.currentTime = 50; v.play(); });
+      if (!gamePath.startsWith('/live')) await frame.evaluate(at => { const v = document.getElementById('v'); v.currentTime = at; v.play(); }, gameAt);
       await sleep(800);
       await panel.bringToFront();
       await panel.locator('#refresh').click();
       const tabs = await panel.evaluate(async () => (await chrome.tabs.query({})).map(tab => [tab.id, tab.url]));
       const tabOf = suffix => String(tabs.find(tab => tab[1].endsWith(suffix))[0]);
-      for (const [role, suffix] of [['reference', gamePath], ['follower', '/reaction']]) {
+      for (const [role, suffix] of [['reference', gamePath], ['follower', reactionPath]]) {
         await panel.locator(`#${role}-tab`).selectOption(tabOf(suffix));
         await panel.locator(`#${role}-connect`).click();
         await panel.waitForFunction(role => document.getElementById(`${role}-connection`).textContent === 'Connected', role);
@@ -153,7 +173,7 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
         // Each video gets its own window, so neither is a background tab.
         await panel.locator('#arrange').click();
         await waitTitle('Videos side by side');
-        const windows = await panel.evaluate(async ids => Promise.all(ids.map(async id => (await chrome.tabs.get(id)).windowId)), [Number(tabOf(gamePath)), Number(tabOf('/reaction'))]);
+        const windows = await panel.evaluate(async ids => Promise.all(ids.map(async id => (await chrome.tabs.get(id)).windowId)), [Number(tabOf(gamePath)), Number(tabOf(reactionPath))]);
         assert.notEqual(windows[0], windows[1]);
       }
       // One click: finds both clocks and starts syncing.
@@ -201,6 +221,7 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     const skipped = await jumpy.offset();
     assert.ok(Math.abs(skipped + 20) < 0.8, `offset after the reaction skipped ahead ${skipped}`);
     report.liveJump = { detected: true, offsetAfterSkip: +skipped.toFixed(2) };
+    await jumpy.panel.close(); await jumpy.creator.close(); await jumpy.gamePage.close();
 
     // 4. The creator's cam over the game, with the reaction's sound mixed in.
     const pipCase = await scenario('/game-top', page => page.mainFrame());
@@ -266,6 +287,19 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     await pipCase.waitTitle('Cam removed');
     assert.equal(await stats(), null);
     report.pip = { box: shown.box, colour: shown.colour, corners: true, volumes: true, menu: true, background: true };
+
+    // 5. Halftime: the clocks vanish, then come back 45 min apart. The videos
+    //    must stay where they are, not jump 45 minutes.
+    const half = await scenario('/game-half', page => page.mainFrame(), false, { reactionPath: '/reaction-half', gameAt: 28, reactionAt: 40 });
+    await half.waitTitle('Videos in sync');
+    const beforeBreak = await half.offset();
+    assert.ok(Math.abs(beforeBreak + 20) < 0.6, `offset before halftime ${beforeBreak}`);
+    await half.waitTitle('Clock stopped or gone', 40000);
+    await half.waitTitle('New half, same sync', 60000);
+    await sleep(4000);
+    const afterBreak = await half.offset();
+    assert.ok(Math.abs(afterBreak + 20) < 0.6, `offset after halftime ${afterBreak}`);
+    report.halftime = { offsetBefore: +beforeBreak.toFixed(2), offsetAfter: +afterBreak.toFixed(2) };
 
     assert.deepEqual(errors, []);
     report.pageErrors = errors;
