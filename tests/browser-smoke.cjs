@@ -10,7 +10,7 @@ const extension = path.resolve(__dirname, '../extension');
 const shots = path.resolve(__dirname, '../docs/images');
 
 (async () => {
-  const context = await chromium.launchPersistentContext(fs.mkdtempSync(path.join(os.tmpdir(), 'syncvideo-smoke-')), {
+  const context = await chromium.launchPersistentContext(fs.mkdtempSync(path.join(os.tmpdir(), 'reactmatch-smoke-')), {
     executablePath: process.env.CHROMIUM || chromium.executablePath(),
     headless: true,
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, '--lang=en-US'],

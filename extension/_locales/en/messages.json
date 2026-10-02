@@ -1,11 +1,11 @@
 {
   "extName": {
-    "message": "SyncVideo: Sync Reactions and Lives with Any Video"
+    "message": "ReactMatch: Sync Reacts and Lives with the Game"
   },
   "extDescription": {
-    "message": "Keep a reaction or live in sync with the game, movie or series you watch. Reads the on-screen clocks, on your device."
+    "message": "Watch a reaction or live in sync with the game, movie or series, with the creator’s cam over the game. Reads the clocks on your PC."
   },
   "actionTitle": {
-    "message": "Open SyncVideo"
+    "message": "Open ReactMatch"
   }
 }

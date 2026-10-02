@@ -34,6 +34,7 @@ const ocr = new LocalOCR();
 // Turns clock readings into a steady offset (see OffsetLock in core.js).
 const lock = new OffsetLock();
 let clocksSeenAt = 0;
+const misses = { reference: 0, follower: 0 };
 // A message that stays up for a while instead of the usual "in sync" line.
 let notice = null;
 let trackers = { reference: new ClockTracker(), follower: new ClockTracker() };
@@ -50,7 +51,7 @@ function status(title, detail, type = '') {
   const line = `${title}${detail ? ` · ${detail}` : ''}`;
   if (cam.on && line !== cam.statusLine) {
     cam.statusLine = line;
-    inMainTab(value => globalThis.__syncVideoPip?.set({ status: value }), { text: title, type }).catch(() => {});
+    inMainTab(value => globalThis.__reactMatchPip?.set({ status: value }), { text: title, type }).catch(() => {});
   }
 }
 function fail(error) {
@@ -210,7 +211,7 @@ function showHidden(role) {
 
 // Keeps a background tab drawing by capturing it (tiny, video only), so its
 // clock can be read while you watch the other video. Chrome allows it once
-// the SyncVideo icon was clicked on that tab.
+// the ReactMatch icon was clicked on that tab.
 async function keepDrawing(role) {
   if (captured(role)) return true;
   try {
@@ -267,8 +268,11 @@ async function readPairClocks(token) {
   const readings = {};
   for (let i = 0; i < roles.length; i++) readings[roles[i]] = { ...(await ocr.read(shots[i].image)), time: shots[i].time, paused: shots[i].paused, sig: shots[i].sig };
   if (token !== revision) return null;
+  // The label keeps the last good reading; one bad frame isn't worth a flicker.
   for (const role of roles) {
-    $(role + '-capture').textContent = readings[role].value === null ? t('clock.unreadable') : t('clock.read', { time: formatTime(readings[role].value) });
+    misses[role] = readings[role].value === null ? misses[role] + 1 : 0;
+    if (readings[role].value !== null) $(role + '-capture').textContent = t('clock.read', { time: formatTime(readings[role].value) });
+    else if (misses[role] >= 3) $(role + '-capture').textContent = t('clock.unreadable');
   }
   return { readings };
 }
@@ -325,7 +329,7 @@ function showClockChoice(diff) {
   }
   if (cam.on && label !== cam.actionLabel) {
     cam.actionLabel = label;
-    inMainTab(action => globalThis.__syncVideoPip?.set({ action }), label).catch(() => {});
+    inMainTab(action => globalThis.__reactMatchPip?.set({ action }), label).catch(() => {});
   }
 }
 function acceptNewClock() {
@@ -568,6 +572,14 @@ async function findMissingClocks(token) {
   if (token !== revision) return false;
   const found = await detect(sides, token);
   if (!found) return false;
+  // A side without one clear clock gets a second look before asking the user
+  // (a frame caught mid-change or a blurry one is enough to miss it).
+  const unclear = sides.filter(role => !found[role].error && !clearChoice(found[role].clocks || []));
+  if (unclear.length) {
+    const again = await detect(unclear, token);
+    if (!again) return false;
+    for (const role of unclear) if (again[role].clocks && clearChoice(again[role].clocks)) found[role] = again[role];
+  }
   const directions = new Set();
   const chosen = {};
   seeds = [];
@@ -729,11 +741,11 @@ async function camPlacement() {
 
 async function followCam(force = false) {
   cam.checked = performance.now();
-  const alive = await inMainTab(() => globalThis.__syncVideoPip?.active() ?? false).catch(() => false);
+  const alive = await inMainTab(() => globalThis.__reactMatchPip?.active() ?? false).catch(() => false);
   if (!alive) { cam.on = false; updateControls(); return; }
   if (!force && !cam.region) return;
   const placement = await camPlacement();
-  await inMainTab(options => globalThis.__syncVideoPip.set(options), { ...placement, ...camLook() });
+  await inMainTab(options => globalThis.__reactMatchPip.set(options), { ...placement, ...camLook() });
 }
 // Corner (or dragged position) and size, as last set in the panel or on the cam.
 const camLook = () => ({ corner: cam.corner, size: cam.size, ...(cam.corner === 'custom' && cam.free ? { free: cam.free } : {}) });
@@ -759,7 +771,7 @@ async function showCam() {
   await chrome.scripting.executeScript({ target: { tabId: sources.reference.tabId, frameIds: [0] }, files: ['media-bridge.js', 'pip.js'] });
   const placement = await camPlacement();
   const result = await inMainTab(async (id, options) => {
-    try { return { ok: await globalThis.__syncVideoPip.start(id, options) }; } catch (error) { return { error: error.message }; }
+    try { return { ok: await globalThis.__reactMatchPip.start(id, options) }; } catch (error) { return { error: error.message }; }
   }, streamId, { ...placement, ...camLook(), volume: Number($('vol-react').value) / 100, mainVolume: Number($('vol-main').value) / 100, labels: camLabels(), status: { text: t('status.pipOn'), type: 'active' } });
   if (!result?.ok) throw new Error(t('error.pipCapture', { message: result?.error || '' }));
   cam.on = true; cam.checked = performance.now(); cam.statusLine = '';
@@ -771,7 +783,7 @@ async function hideCam(announce = true) {
   if (!cam.on) return;
   cam.on = false;
   updateControls();
-  await inMainTab(() => globalThis.__syncVideoPip?.stop()).catch(() => {});
+  await inMainTab(() => globalThis.__reactMatchPip?.stop()).catch(() => {});
   if (announce) status(t('status.pipOff'), t('status.pipOff.detail'));
 }
 
@@ -780,9 +792,9 @@ async function setVolume(role, value, fromCam = false) {
   $(slider).value = String(value);
   $(slider + '-value').textContent = `${value}%`;
   // With the cam on, the reaction's sound plays from the main tab.
-  if (role === 'follower' && cam.on) { if (!fromCam) await inMainTab(volume => globalThis.__syncVideoPip?.set({ volume }), value / 100); }
+  if (role === 'follower' && cam.on) { if (!fromCam) await inMainTab(volume => globalThis.__reactMatchPip?.set({ volume }), value / 100); }
   else if (sources[role]) await adapter.command(sources[role], 'volume', value / 100);
-  if (role === 'reference' && cam.on && !fromCam) await inMainTab(mainVolume => globalThis.__syncVideoPip?.set({ mainVolume }), value / 100);
+  if (role === 'reference' && cam.on && !fromCam) await inMainTab(mainVolume => globalThis.__reactMatchPip?.set({ mainVolume }), value / 100);
 }
 
 // "Sync again" from the cam's menu: learn the offset again from the clocks,
@@ -800,7 +812,7 @@ async function resync() {
 // What the viewer does on the cam (menu and dragging), and the icon clicks
 // relayed by the background script.
 chrome.runtime?.onMessage?.addListener(message => {
-  if (message?.type === 'syncvideo-invoked') {
+  if (message?.type === 'reactmatch-invoked') {
     invoked.add(message.tabId);
     const role = roles.find(r => sources[r]?.tabId === message.tabId);
     if (!role) return;
@@ -812,7 +824,7 @@ chrome.runtime?.onMessage?.addListener(message => {
     });
     return;
   }
-  if (message?.type !== 'syncvideo-pip') return;
+  if (message?.type !== 'reactmatch-pip') return;
   const { action, value } = message;
   if (action === 'resync') resync().catch(fail);
   else if (action === 'accept-clock') acceptNewClock();
@@ -835,7 +847,7 @@ function listenCam() {
   $('pip-size').addEventListener('input', () => {
     cam.size = Number($('pip-size').value) / 100;
     $('pip-size-value').textContent = `${$('pip-size').value}%`;
-    if (cam.on) inMainTab(size => globalThis.__syncVideoPip?.set({ size }), cam.size).catch(fail);
+    if (cam.on) inMainTab(size => globalThis.__reactMatchPip?.set({ size }), cam.size).catch(fail);
   });
   for (const [id, role] of [['vol-main', 'reference'], ['vol-react', 'follower']]) {
     $(id).addEventListener('input', () => setVolume(role, Number($(id).value)).catch(fail));

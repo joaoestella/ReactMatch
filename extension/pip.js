@@ -8,7 +8,7 @@
 // keeps playing even when its tab is in the background. Its sound stops
 // playing there and plays here instead, through a gain we control.
 (() => {
-  if (globalThis.__syncVideoPip) return;
+  if (globalThis.__reactMatchPip) return;
   const MARGIN = 0.025;
   const SVG = 'http://www.w3.org/2000/svg';
   let pip = null;
@@ -25,7 +25,7 @@
       const outer = frame.getBoundingClientRect(), inner = target.innerRect;
       return inner ? { x: outer.x + inner.x, y: outer.y + inner.y, width: inner.width, height: inner.height } : outer;
     }
-    const video = globalThis.__syncVideoBridge?.element(target.videoId);
+    const video = globalThis.__reactMatchBridge?.element(target.videoId);
     return video?.isConnected ? video.getBoundingClientRect() : null;
   }
   const area = rect => rect.width * rect.height;
@@ -140,7 +140,7 @@
 
   // Tells the panel what the viewer did here; it keeps both in step.
   function tell(action, value) {
-    try { chrome.runtime.sendMessage({ type: 'syncvideo-pip', action, value }).catch(() => {}); } catch { /* Extension reloaded. */ }
+    try { chrome.runtime.sendMessage({ type: 'reactmatch-pip', action, value }).catch(() => {}); } catch { /* Extension reloaded. */ }
   }
 
   // ---- Placement and drawing --------------------------------------------------
@@ -305,7 +305,7 @@
     pip = null;
   }
 
-  globalThis.__syncVideoPip = {
+  globalThis.__reactMatchPip = {
     async start(streamId, options) {
       stop();
       const constraint = { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: streamId } };

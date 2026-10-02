@@ -14,4 +14,4 @@ http.createServer((request, response) => {
     response.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     if (request.method === 'HEAD') response.end(); else fs.createReadStream(file).pipe(response);
   } catch { response.writeHead(400); response.end('Bad request'); }
-}).listen(4188, '127.0.0.1', () => console.log('SyncVideo: http://127.0.0.1:4188 (demo only). Ctrl+C to stop.'));
+}).listen(4188, '127.0.0.1', () => console.log('ReactMatch: http://127.0.0.1:4188 (demo only). Ctrl+C to stop.'));

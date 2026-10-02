@@ -6,7 +6,7 @@ const WIDTH = 460;
 chrome.action.onClicked.addListener(async tab => {
   // A click on a tab lets Chrome capture it (activeTab). Tell the panel, which
   // may be waiting for that to read a background tab or show the cam.
-  if (tab?.id !== undefined) chrome.runtime.sendMessage({ type: 'syncvideo-invoked', tabId: tab.id }).catch(() => {});
+  if (tab?.id !== undefined) chrome.runtime.sendMessage({ type: 'reactmatch-invoked', tabId: tab.id }).catch(() => {});
   const url = chrome.runtime.getURL('panel.html');
   const existing = (await chrome.tabs.query({})).find(tab => tab.url === url);
   if (existing) {

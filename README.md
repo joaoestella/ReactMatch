@@ -1,10 +1,10 @@
-# SyncVideo ⇄
+# ReactMatch ⇄
 
 A Chrome extension that **keeps a reaction or a live in sync with the game, movie or series you are watching**, even when each of you watches through a different service.
 
-![SyncVideo panel](docs/images/panel-en.png)
+![ReactMatch panel](docs/images/panel-en.png)
 
-You open the game in one tab and the creator's live in another. The creator shows the match clock on screen; your game also shows it. SyncVideo finds both clocks, reads them and moves your game (or pauses it) so both show the same minute. It keeps checking while you watch.
+You open the game in one tab and the creator's live in another. The creator shows the match clock on screen; your game also shows it. ReactMatch finds both clocks, reads them and moves your game (or pauses it) so both show the same minute. It keeps checking while you watch.
 
 It doesn't matter if the creator watches on one service and you on another: what lines the videos up is **the moment in the content** (the match clock), not the position of each player. And because the clock is read from inside the creator's video, it arrives together with the reaction you hear.
 
@@ -20,35 +20,35 @@ It doesn't matter if the creator watches on one service and you on another: what
 - **Fine adjustment** in half-second steps, and a **demo** with simulated clocks.
 - **The creator's cam on the game:** pick the cam's area in the reaction and it appears over the game, in the corner you choose or wherever you drag it, also in fullscreen. Each video has its own volume.
 - English, Português and Español; follows Chrome's language, with a menu to change it.
-- **Private:** no account, no server, no analytics. Frames are read in memory on your computer and discarded. [Privacy policy](https://joaoestella.github.io/SyncVideo/).
+- **Private:** no account, no server, no analytics. Frames are read in memory on your computer and discarded. [Privacy policy](https://joaoestella.github.io/ReactMatch/).
 
 ## Install (developer mode)
 
 1. Download or clone this repository.
 2. Open `chrome://extensions` and turn on **Developer mode** (top right).
 3. Click **Load unpacked** and select the **`extension`** folder.
-4. Pin the icon and click it: the SyncVideo panel opens in its own window.
+4. Pin the icon and click it: the ReactMatch panel opens in its own window.
 
 Chrome 116+ (and Chromium browsers such as Edge, Brave and Opera).
 
 ## How to use
 
 1. Open the game and the reaction (or live) in Chrome and press play on both.
-2. Click the SyncVideo icon. The panel opens as a narrow window on the right.
+2. Click the ReactMatch icon. The panel opens as a narrow window on the right.
 3. Choose the game as **1** and the reaction as **2**, and click **Connect** on each. Chrome asks for access to each site.
 4. Click **⧉ Put side by side** so each video has its own window and both are visible.
 5. Click **Sync now**. It finds both clocks and starts syncing, usually in a few seconds.
 
 The order doesn't matter: whichever video is ahead goes back (or, if its player can't rewind, pauses for the difference). If the reaction still feels a little early or late, use the fine adjustment.
 
-**Reaction in the background.** Chrome stops drawing videos in background tabs, so their clocks can't be read. To keep the reaction's tab in the background and the game in front, click the SyncVideo icon once on the reaction's tab (or press **Alt+Shift+S** there): SyncVideo then captures that tab in a tiny, silent stream that keeps it drawing, and goes on reading its clock while its sound keeps playing. Otherwise, keep both videos visible (**⧉ Put side by side**); SyncVideo tells you when one is hidden.
+**Reaction in the background.** Chrome stops drawing videos in background tabs, so their clocks can't be read. To keep the reaction's tab in the background and the game in front, click the ReactMatch icon once on the reaction's tab (or press **Alt+Shift+S** there): ReactMatch then captures that tab in a tiny, silent stream that keeps it drawing, and goes on reading its clock while its sound keeps playing. Otherwise, keep both videos visible (**⧉ Put side by side**); ReactMatch tells you when one is hidden.
 
 ### The creator's cam over the game
 
 Step **3** puts the creator's cam in a corner of the game, so you can watch the game full size and still see the reaction:
 
 1. **Choose the cam**: draw a box around the creator's camera in video 2.
-2. Go to the reaction's tab and click the SyncVideo icon once (or press **Alt+Shift+S**). Chrome only lets an extension capture a tab after that.
+2. Go to the reaction's tab and click the ReactMatch icon once (or press **Alt+Shift+S**). Chrome only lets an extension capture a tab after that.
 3. Click **Show on the game**. Pick a corner and a size, or drag the cam anywhere; it follows the game into fullscreen.
 4. Set the **Game** and **Reaction** volumes. While the cam is shown, the reaction's sound comes through the game's tab.
 5. While watching, the **⋯** button on the cam opens its menu: sync again, both volumes, the corner and the size, and removing the cam. No need to go back to the panel.

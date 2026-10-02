@@ -2,7 +2,7 @@
 // that frame, reads and controls them, and grabs still frames straight from
 // the player so the clock can be read without capturing the whole screen.
 (() => {
-  if (globalThis.__syncVideoBridge) return;
+  if (globalThis.__reactMatchBridge) return;
   const ids = new WeakMap();
   const videos = new Map();
   let sequence = 0;
@@ -82,7 +82,7 @@
     };
   }
 
-  globalThis.__syncVideoBridge = {
+  globalThis.__reactMatchBridge = {
     list() {
       videos.clear();
       const found = collect().map(video => {

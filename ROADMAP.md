@@ -1,6 +1,6 @@
 # Roadmap
 
-SyncVideo keeps a second video (a reaction, a live, a commentary) in sync with
+ReactMatch keeps a second video (a reaction, a live, a commentary) in sync with
 the content it refers to. The product is not tied to one sport or community;
 football with a creator's live is simply the first case to validate.
 

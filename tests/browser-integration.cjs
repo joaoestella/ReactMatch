@@ -17,7 +17,7 @@ const http = require('node:http');
 const { execFileSync } = require('node:child_process');
 const assert = require('node:assert/strict');
 
-const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'syncvideo-it-'));
+const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'reactmatch-it-'));
 const extension = path.join(scratch, 'extension');
 fs.cpSync(path.resolve(__dirname, '../extension'), extension, { recursive: true });
 // Test copy only: pre-grant the two local origins so no permission prompt appears.
@@ -231,7 +231,7 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     // Clicking the icon on the reaction's tab lets it be read in the background
     // (the background script relays the click; here it's sent by hand).
     const reactionTab = await p.evaluate(async () => (await chrome.tabs.query({})).find(tab => tab.url.endsWith('/reaction')).id);
-    await worker.evaluate(id => chrome.runtime.sendMessage({ type: 'syncvideo-invoked', tabId: id }), reactionTab);
+    await worker.evaluate(id => chrome.runtime.sendMessage({ type: 'reactmatch-invoked', tabId: id }), reactionTab);
     await pipCase.waitTitle('Video 2 in the background');
     await p.locator('#pip-pick').click();
     await p.locator('#crop-dialog').waitFor({ state: 'visible' });
@@ -243,7 +243,7 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     await p.locator('#pip-toggle').click();
     await pipCase.waitTitle('Cam on the game');
     const gameTab = await p.evaluate(async () => (await chrome.tabs.query({})).find(tab => tab.url.endsWith('/game-top')).id);
-    const stats = () => p.evaluate(async id => (await chrome.scripting.executeScript({ target: { tabId: id }, func: () => globalThis.__syncVideoPip?.stats() ?? null }))[0].result, gameTab);
+    const stats = () => p.evaluate(async id => (await chrome.scripting.executeScript({ target: { tabId: id }, func: () => globalThis.__reactMatchPip?.stats() ?? null }))[0].result, gameTab);
     await sleep(1500);
     const shown = await stats();
     if (process.env.SHOTS) { await pipCase.gamePage.screenshot({ path: path.join(process.env.SHOTS, 'pip.png') }); }
@@ -262,7 +262,7 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     assert.ok(Math.abs((await stats()).volume - 0.3) < 0.01, 'reaction volume');
     assert.equal(await pipCase.gamePage.evaluate(() => document.getElementById('v').volume), 0.5);
     // The ⋯ menu on the cam: corner, volumes and size, kept in step with the panel.
-    const press = (what, value) => p.evaluate(async ([id, w, v]) => { await chrome.scripting.executeScript({ target: { tabId: id }, func: (a, b) => globalThis.__syncVideoPip.press(a, b), args: [w, v ?? null] }); }, [gameTab, what, value]);
+    const press = (what, value) => p.evaluate(async ([id, w, v]) => { await chrome.scripting.executeScript({ target: { tabId: id }, func: (a, b) => globalThis.__reactMatchPip.press(a, b), args: [w, v ?? null] }); }, [gameTab, what, value]);
     await press('open');
     const opened = await stats();
     if (process.env.SHOTS) await pipCase.gamePage.screenshot({ path: path.join(process.env.SHOTS, 'pip-menu.png') });

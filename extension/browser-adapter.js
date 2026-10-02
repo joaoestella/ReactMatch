@@ -20,7 +20,7 @@ export class BrowserAdapter {
   async connect(tabId) {
     await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, files: ['media-bridge.js'] });
     const results = await chrome.scripting.executeScript({
-      target: { tabId, allFrames: true }, func: () => globalThis.__syncVideoBridge?.list()
+      target: { tabId, allFrames: true }, func: () => globalThis.__reactMatchBridge?.list()
     });
     const videos = [], reached = new Set(), children = new Set();
     for (const { frameId, result } of results) {
@@ -42,7 +42,7 @@ export class BrowserAdapter {
     const [result] = await chrome.scripting.executeScript({
       target: { tabId: source.tabId, frameIds: [source.frameId ?? 0] },
       func: async (id, op, val) => {
-        try { return { ok: true, data: await globalThis.__syncVideoBridge.run(id, op, val) }; }
+        try { return { ok: true, data: await globalThis.__reactMatchBridge.run(id, op, val) }; }
         catch (error) { return { ok: false, message: error.message }; }
       }, args: [source.videoId, operation, value ?? null]
     });
