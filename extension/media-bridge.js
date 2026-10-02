@@ -45,12 +45,14 @@
   // returns it as a data URL. Players that use DRM draw black, and videos
   // served from another site without CORS can't be read back at all; both
   // cases are reported so the panel can fall back to a tab capture.
-  function grab(video, { region = null, maxWidth = 1920, minHeight = 0, type = 'image/jpeg' } = {}) {
+  function grab(video, { region = null, maxWidth = 1920, minWidth = 0, minHeight = 0, type = 'image/jpeg' } = {}) {
     const vw = video.videoWidth, vh = video.videoHeight;
     if (!vw || !vh || video.readyState < 2) return { error: 'not-ready' };
     const r = region || { x: 0, y: 0, w: 1, h: 1 };
     const sw = Math.max(1, Math.round(r.w * vw)), sh = Math.max(1, Math.round(r.h * vh));
     let scale = Math.min(1, maxWidth / sw);
+    // Small videos are enlarged a little: tiny clock digits read much better.
+    if (minWidth && sw * scale < minWidth) scale = Math.min(2, minWidth / sw);
     if (minHeight && sh * scale < minHeight) scale = Math.min(4, minHeight / sh);
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(sw * scale));

@@ -1,6 +1,11 @@
-import { clockFromOCR } from './core.js';
+import { clockFromOCR, clockTokens } from './core.js';
+import { textBoxes } from './finder.js';
 
 // Tesseract runs locally, from the files bundled in vendor/.
+
+// Characters allowed when reading a line of a frame. Letters are kept so that
+// text next to a clock ("ARG 25:40") isn't misread as more digits.
+const TEXT_CHARS = '0123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+-\'"().,/';
 export class LocalOCR {
   constructor() { this.workerPromise = null; this.failure = null; this.mode = null; }
   async worker() {
@@ -20,22 +25,22 @@ export class LocalOCR {
   async setMode(mode) {
     const worker = await this.worker();
     if (this.mode === mode) return worker;
-    // 'line': a crop around one clock. 'page': a whole frame, looking for any text.
-    await worker.setParameters(mode === 'line'
+    // 'clock': a crop around one clock, digits only. 'text': one line of any text.
+    await worker.setParameters(mode === 'clock'
       ? { tessedit_char_whitelist: '0123456789:', tessedit_pageseg_mode: '7' }
-      : { tessedit_char_whitelist: '', tessedit_pageseg_mode: '11' });
+      : { tessedit_char_whitelist: TEXT_CHARS, tessedit_pageseg_mode: '7' });
     this.mode = mode;
     return worker;
   }
   // image: canvas, <img> or data URL of the clock region.
   async read(image) {
-    const worker = await this.setMode('line');
+    const worker = await this.setMode('clock');
     const { data } = await worker.recognize(image);
     return { value: clockFromOCR(data.text), confidence: data.confidence, text: data.text.trim() };
   }
-  // Every word of a whole frame, with its box in pixels and per-character boxes.
-  async words(image) {
-    const worker = await this.setMode('page');
+  // The words of a crop holding one line of text, with boxes in crop pixels.
+  async line(image) {
+    const worker = await this.setMode('text');
     const { data } = await worker.recognize(image, {}, { blocks: true, text: false });
     const words = [];
     for (const block of data.blocks || []) for (const paragraph of block.paragraphs) for (const line of paragraph.lines) {
@@ -58,6 +63,32 @@ export function loadImage(src) {
     image.onerror = () => reject(new Error('Não foi possível abrir a imagem do vídeo.'));
     image.src = src;
   });
+}
+
+// Clock-looking tokens on one frame. Text lines are located first (finder.js)
+// and each is read on its own, enlarged; `lines` reuses known line positions.
+export async function scanClocks(ocr, src, lines = null) {
+  const image = await loadImage(src);
+  const W = image.naturalWidth, H = image.naturalHeight;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.drawImage(image, 0, 0);
+  lines ??= textBoxes(context.getImageData(0, 0, W, H));
+  const tokens = [];
+  for (const line of lines) {
+    const pad = Math.round(line.h * 0.4);
+    const x = Math.max(0, line.x - pad), y = Math.max(0, line.y - pad);
+    const w = Math.min(W - x, line.w + 2 * pad), h = Math.min(H - y, line.h + 2 * pad);
+    const scale = Math.min(4, Math.max(1, 64 / line.h));
+    const crop = document.createElement('canvas');
+    crop.width = Math.round(w * scale); crop.height = Math.round(h * scale);
+    crop.getContext('2d').drawImage(canvas, x, y, w, h, 0, 0, crop.width, crop.height);
+    const back = b => ({ x0: x + b.x0 / scale, y0: y + b.y0 / scale, x1: x + b.x1 / scale, y1: y + b.y1 / scale });
+    const words = (await ocr.line(crop)).map(word => ({ ...word, bbox: back(word.bbox), symbols: word.symbols.map(back) }));
+    for (const token of clockTokens(words, W, H)) tokens.push({ ...token, line });
+  }
+  return tokens;
 }
 
 // Crop of a tab capture (fallback path, used when the player can't be read directly).
@@ -96,7 +127,8 @@ export async function startTabCapture() {
 // Lets the user drag a box over the clock on a still image (an <img>, a
 // <video> or a canvas). Resolves to a region in 0..1 coordinates, or null.
 // `suggested` pre-selects a region, e.g. one found automatically.
-export async function selectRegion(dialog, still, { suggested = null, track = null } = {}) {
+// `options` lists other clocks found ({ label, region }), shown as buttons.
+export async function selectRegion(dialog, still, { suggested = null, options = [], track = null } = {}) {
   const sourceWidth = still.videoWidth || still.naturalWidth || still.width;
   const sourceHeight = still.videoHeight || still.naturalHeight || still.height;
   const canvas = document.querySelector('#crop-canvas');
@@ -127,6 +159,23 @@ export async function selectRegion(dialog, still, { suggested = null, track = nu
     const rect = canvas.getBoundingClientRect();
     return { x: Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)), y: Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height)) };
   };
+  const choices = document.querySelector('#crop-options');
+  choices.hidden = options.length < 2;
+  choices.replaceChildren();
+  if (options.length > 1) {
+    choices.append('Relógios encontrados:');
+    for (const option of options) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = option.label;
+      button.setAttribute('aria-pressed', String(option.region === suggested));
+      button.onclick = () => {
+        region = suggested = option.region; render();
+        for (const other of choices.querySelectorAll('button')) other.setAttribute('aria-pressed', String(other === button));
+      };
+      choices.append(button);
+    }
+  }
   canvas.onpointerdown = event => { start = point(event); canvas.setPointerCapture(event.pointerId); };
   canvas.onpointermove = event => {
     if (!start) return;

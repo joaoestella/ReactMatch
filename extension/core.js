@@ -48,6 +48,70 @@ export function decideCorrection({ target, follower, reference, tolerance = 0.85
   return { action: 'seek', target, error };
 }
 
+// Clock-looking tokens ("25:40", "1:02:45") in the words OCR found on a whole
+// frame. Boxes are returned in 0..1 coordinates of the frame.
+export function clockTokens(words, width, height) {
+  const tokens = [];
+  for (const word of words) {
+    const text = String(word.text);
+    for (const match of text.matchAll(/\d{1,3}:\d{2}(?::\d{2})?/g)) {
+      // Reject pieces of longer numbers ("1025:30" is not a clock).
+      if (/[\d:]/.test(text[match.index - 1] || '') || /[\d:]/.test(text[match.index + match[0].length] || '')) continue;
+      const value = parseClock(match[0]);
+      if (value === null) continue;
+      let box = word.bbox;
+      const symbols = word.symbols || [];
+      if (symbols.length === text.length && match[0].length < text.length) {
+        const part = symbols.slice(match.index, match.index + match[0].length);
+        box = { x0: Math.min(...part.map(s => s.x0)), y0: Math.min(...part.map(s => s.y0)), x1: Math.max(...part.map(s => s.x1)), y1: Math.max(...part.map(s => s.y1)) };
+      }
+      tokens.push({
+        text: match[0], value, parts: match[0].split(':').length, confidence: word.confidence ?? 0,
+        box: { x: box.x0 / width, y: box.y0 / height, w: (box.x1 - box.x0) / width, h: (box.y1 - box.y0) / height }
+      });
+    }
+  }
+  return tokens;
+}
+
+// Given clock tokens seen on several frames of the same player (each with the
+// player position of that frame), keeps the ones that tick with the video:
+// one second of playback moves them one second up (or down, for countdowns).
+// Static numbers such as "Replay 12:30" or a score are dropped. Best first:
+// mm:ss before h:mm:ss (stream uptime), then bigger, then clearer text.
+export function findClocks(frames) {
+  if (frames.length < 2) return [];
+  const first = frames[0], last = frames.at(-1);
+  if (last.time - first.time < 1.5) return [];
+  const center = box => [box.x + box.w / 2, box.y + box.h / 2];
+  const near = (a, b) => {
+    const [ax, ay] = center(a), [bx, by] = center(b);
+    return Math.abs(ax - bx) < Math.max(a.w, b.w) * 0.6 && Math.abs(ay - by) < Math.max(a.h, b.h) * 0.6;
+  };
+  const found = [];
+  for (const token of last.tokens) {
+    const track = frames.map(frame => frame.tokens.find(other => other.parts === token.parts && near(other.box, token.box)));
+    if (!track[0]) continue;
+    for (const direction of [1, -1]) {
+      const ok = track.every((seen, i) => !seen || Math.abs((seen.value - track[0].value) * direction - (frames[i].time - first.time)) <= 1.2);
+      const seenCount = track.filter(Boolean).length;
+      if (ok && seenCount >= 2 && track[0].value !== token.value) {
+        found.push({ ...token, direction, seen: seenCount });
+        break;
+      }
+    }
+  }
+  return found.sort((a, b) => (a.parts - b.parts) || (b.box.h - a.box.h) || (b.confidence - a.confidence));
+}
+
+// Region to read for a found clock: its box with a little margin.
+// `aspect` is the frame's width / height (boxes are relative to each axis).
+export function regionAround(box, aspect = 16 / 9) {
+  const padX = box.h * 0.5 / aspect, padY = box.h * 0.4;
+  const x = Math.max(0, box.x - padX), y = Math.max(0, box.y - padY);
+  return { x, y, w: Math.min(1 - x, box.w + padX * 2), h: Math.min(1 - y, box.h + padY * 2) };
+}
+
 // Offset to keep between the two players (follower.time - reference.time) so
 // both clocks show the same moment. Each side gives the clock it showed and
 // the player position of that exact frame, so OCR delays don't matter.
@@ -79,12 +143,16 @@ export class AnchorEstimator {
 
 export class ClockTracker {
   constructor(direction = 1) { this.direction = direction; this.reset(); }
-  reset() { this.previous = null; this.good = 0; }
+  reset() { this.previous = null; this.good = 0; this.unreadable = 0; }
   push(value, at, confidence = 100, rate = 1) {
     if (!Number.isFinite(value) || confidence < 65) {
-      this.reset();
+      // One bad read (a blurry frame, a transition) is skipped, not counted
+      // against the clock; only readings that disagree start over.
+      this.unreadable = (this.unreadable || 0) + 1;
+      if (this.unreadable >= 3) this.reset();
       return { valid: false, reason: 'Relógio ilegível. Aguardando uma leitura clara.' };
     }
+    this.unreadable = 0;
     const old = this.previous;
     this.previous = { value, at };
     if (!old) { this.good = 1; return { valid: false, reason: 'Confirmando o relógio…' }; }

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseClock, clockFromOCR, clockTarget, decideCorrection, ClockTracker, anchorFromClocks, AnchorEstimator } from '../extension/core.js';
+import { parseClock, clockFromOCR, clockTarget, decideCorrection, ClockTracker, anchorFromClocks, AnchorEstimator, clockTokens, findClocks, regionAround } from '../extension/core.js';
+import { textBoxes } from '../extension/finder.js';
 
 test('reads long timers and hours; rejects invalid seconds and ambiguous OCR', () => {
   assert.equal(parseClock('125:42'), 7542);
@@ -75,4 +76,47 @@ test('anchor estimates average out whole-second clocks and ignore outliers', () 
   assert.equal(estimator.push(-19.6), null);
   assert.ok(Math.abs(estimator.push(-20.1) - -20.033) < 0.01);
   assert.ok(Math.abs(estimator.push(-35) - -20.033) < 0.01, 'a single misread does not move the anchor');
+});
+
+test('clock tokens skip pieces of longer numbers and locate the clock inside a line', () => {
+  const sym = (x0, x1) => ({ x0, x1, y0: 10, y1: 30 });
+  const words = [
+    { text: 'ARG25:30', confidence: 90, bbox: { x0: 0, y0: 10, x1: 160, y1: 30 }, symbols: [0, 20, 40, 60, 80, 100, 120, 140].map(x => sym(x, x + 18)) },
+    { text: '1025:30', confidence: 90, bbox: { x0: 200, y0: 10, x1: 300, y1: 30 }, symbols: [] }
+  ];
+  const tokens = clockTokens(words, 1000, 100);
+  assert.equal(tokens.length, 1);
+  assert.equal(tokens[0].value, 1530);
+  assert.equal(tokens[0].box.x, 0.06);
+});
+
+test('only clocks that tick with the video are found; mm:ss beats an uptime', () => {
+  const at = (text, x, value, parts = 2) => ({ text, value, parts, confidence: 90, box: { x, y: 0.9, w: 0.06, h: 0.03 } });
+  const frames = [0, 1.1, 2.2].map((time, i) => ({
+    time,
+    tokens: [at('12:30', 0.8, 750), at('x', 0.1, 1510 + i), at('y', 0.5, 3765 + i, 3), at('z', 0.3, 300 - i)]
+  }));
+  const found = findClocks(frames);
+  assert.deepEqual(found.map(c => [c.box.x, c.direction]), [[0.1, 1], [0.3, -1], [0.5, 1]]);
+  assert.deepEqual(findClocks(frames.slice(0, 1)), []);
+  const region = regionAround({ x: 0.5, y: 0.5, w: 0.1, h: 0.04 });
+  assert.ok(region.x < 0.5 && region.x + region.w > 0.6 && region.y < 0.5 && region.y + region.h > 0.54);
+});
+
+test('text finder marks a line of glyphs and ignores flat or noisy areas', () => {
+  const width = 400, height = 200, data = new Uint8ClampedArray(width * height * 4);
+  let seed = 7;
+  for (let i = 0; i < width * height; i++) {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    const v = 60 + (seed % 20);
+    data.set([v, v, v, 255], i * 4);
+  }
+  // Five "glyphs" made of vertical bars, 20 px tall, at y = 100.
+  for (let g = 0; g < 5; g++) for (let y = 100; y < 120; y++) for (const x of [0, 1, 8, 9]) {
+    const px = 50 + g * 14 + x;
+    data.set([240, 240, 240, 255], (y * width + px) * 4);
+  }
+  const boxes = textBoxes({ data, width, height });
+  assert.equal(boxes.length, 1);
+  assert.ok(Math.abs(boxes[0].y - 100) <= 1 && Math.abs(boxes[0].h - 20) <= 1 && boxes[0].x <= 50 && boxes[0].x + boxes[0].w >= 115);
 });

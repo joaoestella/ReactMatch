@@ -1,7 +1,7 @@
 import { BrowserAdapter } from './browser-adapter.js';
 import { DemoAdapter } from './demo-adapter.js';
-import { parseClock, formatTime, clockTarget, insideRanges, decideCorrection, ClockTracker, anchorFromClocks, AnchorEstimator } from './core.js';
-import { LocalOCR, loadImage, cropFrame, startTabCapture, selectRegion } from './ocr.js';
+import { parseClock, formatTime, clockTarget, insideRanges, decideCorrection, ClockTracker, anchorFromClocks, AnchorEstimator, findClocks, regionAround } from './core.js';
+import { LocalOCR, loadImage, cropFrame, startTabCapture, selectRegion, scanClocks } from './ocr.js';
 
 const $ = id => document.getElementById(id);
 const roles = ['reference', 'follower'];
@@ -15,6 +15,7 @@ const estimator = new AnchorEstimator();
 let trackers = { reference: new ClockTracker(), follower: new ClockTracker() };
 
 const direction = () => Number($('direction').value);
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const seconds = value => `${value > 0 ? '+' : ''}${value.toFixed(1).replace('.', ',')}s`;
 
 function status(title, detail, type = '') {
@@ -38,6 +39,7 @@ function updateControls() {
   $('start').disabled = !connected || (anchor === null && !(mode === 'clock' && hasOCR()));
   $('start').textContent = running ? 'Parar acompanhamento' : 'Iniciar acompanhamento →';
   $('read-clocks').disabled = !hasOCR() || demo;
+  $('find-clocks').disabled = !connected || demo;
   $('clear-captures').hidden = !Object.keys(captures).length;
   $('trim-value').textContent = seconds(trim).replace('+0,0s', '0,0s');
   for (const role of roles) $(role + '-capture').disabled = !sources[role] || demo || mode !== 'clock';
@@ -308,36 +310,123 @@ async function tick() {
 
 // ---- Picking the clock -------------------------------------------------------
 
-async function selectClock(role) {
-  stop(false);
-  const token = revision;
-  status('Abrindo a imagem do player', 'Um instante…');
-  const shot = await adapter.command(sources[role], 'grab', { maxWidth: 1920, type: 'image/jpeg' });
-  if (token !== revision) return;
-  let still, screen = null;
-  if (shot.error === 'not-ready') throw new Error('Dê play no vídeo para a imagem carregar e tente novamente.');
-  if (shot.error || shot.blank) {
+// Looks for clocks on a few frames of each side, ~1 s apart, while playing.
+// Returns, per side, the clocks that tick with the video (best first) and the
+// last frame, or the reason it couldn't look.
+async function detect(sidesToCheck, token) {
+  const shots = Object.fromEntries(sidesToCheck.map(role => [role, []]));
+  for (let i = 0; i < 3; i++) {
+    if (i) await sleep(1100);
+    const taken = await Promise.all(sidesToCheck.map(role => adapter.command(sources[role], 'grab', { maxWidth: 1920, type: 'image/jpeg' })));
+    if (token !== revision) return null;
+    taken.forEach((shot, index) => shots[sidesToCheck[index]].push(shot));
+  }
+  const result = {};
+  for (const role of sidesToCheck) {
+    const list = shots[role];
+    const bad = list.find(shot => shot.error || shot.blank);
+    if (bad) { result[role] = { error: bad.error === 'not-ready' ? 'not-ready' : 'protected' }; continue; }
+    if (list.some(shot => shot.paused)) { result[role] = { error: 'paused' }; continue; }
+    // Only lines that held a clock on the first frame are read again later.
+    const first = await scanClocks(ocr, list[0].image);
+    const lines = [...new Set(first.map(token => token.line))];
+    const frames = [{ time: list[0].time, tokens: first }];
+    for (const shot of list.slice(1)) frames.push({ time: shot.time, tokens: lines.length ? await scanClocks(ocr, shot.image, lines) : [] });
+    if (token !== revision) return null;
+    result[role] = { clocks: findClocks(frames), last: list.at(-1) };
+  }
+  return result;
+}
+
+const regionOf = (clock, shot) => regionAround(clock.box, shot.width / shot.height);
+// One clear clock: the only mm:ss that ticks (an uptime in h:mm:ss doesn't compete).
+const clearChoice = clocks => clocks.length && clocks.filter(clock => clock.parts === clocks[0].parts).length === 1 ? clocks[0] : null;
+
+function useVideoRegion(role, region, label) {
+  dropCapture(role);
+  captures[role] = { kind: 'video', region };
+  $(role + '-capture').textContent = label ? `Relógio ${label} · trocar` : 'Relógio selecionado · trocar';
+}
+
+// Opens the box editor on a still of the player, pre-selecting what was found.
+async function pickOnStill(role, token, found) {
+  let still, screen = null, clocks = [], shot = found?.last;
+  if (!shot && !found?.error) {
+    shot = await adapter.command(sources[role], 'grab', { maxWidth: 1920, type: 'image/jpeg' });
+    if (token !== revision) return false;
+    if (shot.error === 'not-ready') throw new Error('Dê play no vídeo para a imagem carregar e tente novamente.');
+    if (shot.error || shot.blank) shot = null;
+  }
+  if (found?.clocks) clocks = found.clocks;
+  if (!shot) {
     // Protected or cross-site player: read the tab through a capture instead.
-    status('Escolha a mesma aba', 'Este player não deixa ler a imagem direto. Na janela do Chrome, escolha a aba conectada neste lado.', 'warning');
+    status('Escolha a mesma aba', `Este player não deixa ler a imagem direto. Na janela do Chrome, escolha a aba do vídeo ${role === 'reference' ? 'A' : 'B'}.`, 'warning');
     screen = await startTabCapture();
     still = screen.video;
   } else still = await loadImage(shot.image);
-  const region = await selectRegion($('crop-dialog'), still, { track: screen?.stream.getVideoTracks()[0] });
+  const options = shot ? clocks.map(clock => ({ label: clock.text, region: regionOf(clock, shot) })) : [];
+  const region = await selectRegion($('crop-dialog'), still, { suggested: options[0]?.region || null, options, track: screen?.stream.getVideoTracks()[0] });
   if (!region || token !== revision) {
     screen?.stream.getTracks().forEach(t => t.stop());
-    status('Seleção cancelada', 'Você pode tentar novamente ou usar a calibração manual.');
-    return;
+    return false;
+  }
+  if (!screen) {
+    useVideoRegion(role, region, options.find(option => option.region === region)?.label);
+    return true;
   }
   dropCapture(role);
-  captures[role] = screen ? { kind: 'screen', region, ...screen } : { kind: 'video', region };
-  if (screen) screen.stream.getVideoTracks()[0].onended = () => {
+  captures[role] = { kind: 'screen', region, ...screen };
+  screen.stream.getVideoTracks()[0].onended = () => {
     delete captures[role]; stop(false); resetTrackers(); updateControls();
     $(role + '-capture').textContent = 'Selecionar relógio';
     status('Captura encerrada', 'Selecione o relógio novamente para continuar a leitura.', 'warning');
   };
   $(role + '-capture').textContent = 'Relógio selecionado · trocar';
+  return true;
+}
+
+function afterPicking() {
   resetTrackers(); updateControls();
-  status('Região selecionada', hasOCR() ? 'Você pode ler os relógios pausados ou iniciar a leitura contínua.' : 'Selecione agora o relógio do outro vídeo.', 'active');
+  if (hasOCR()) status('Relógios prontos', 'Clique em “Iniciar acompanhamento”. A extensão lê os dois relógios e ajusta o vídeo B sozinha.', 'active');
+  else status('Falta um relógio', 'Selecione o relógio do outro vídeo.', 'warning');
+}
+
+async function selectClock(role) {
+  stop(false);
+  const token = revision;
+  status('Procurando o relógio', 'Um instante…');
+  const state = await adapter.command(sources[role], 'snapshot');
+  const found = state.paused ? null : (await detect([role], token))?.[role];
+  if (token !== revision) return;
+  if (!(await pickOnStill(role, token, found))) { status('Seleção cancelada', 'Você pode tentar novamente ou usar a calibração manual.'); return; }
+  afterPicking();
+}
+
+async function findBothClocks() {
+  stop(false);
+  const token = revision;
+  status('Procurando os relógios', 'Deixe os dois vídeos tocando. Leva alguns segundos.', 'active');
+  await Promise.all(roles.map(role => adapter.command(sources[role], 'play')));
+  await sleep(400);
+  if (token !== revision) return;
+  const found = await detect(roles, token);
+  if (!found) return;
+  const directions = new Set();
+  for (const role of roles) {
+    const choice = found[role].clocks && clearChoice(found[role].clocks);
+    if (choice) {
+      useVideoRegion(role, regionOf(choice, found[role].last), choice.text);
+      directions.add(choice.direction);
+      continue;
+    }
+    if (found[role].error === 'paused' || found[role].error === 'not-ready') throw new Error('Dê play nos dois vídeos e tente de novo.');
+    // Several clocks, none, or a protected player: let the user confirm.
+    if (!(await pickOnStill(role, token, found[role]))) { status('Seleção cancelada', 'Você pode tentar novamente ou marcar os relógios à mão.'); updateControls(); return; }
+    const picked = found[role].clocks?.find(clock => clock.text && $(role + '-capture').textContent.includes(clock.text));
+    if (picked) directions.add(picked.direction);
+  }
+  if (directions.size === 1) $('direction').value = String([...directions][0]);
+  afterPicking();
 }
 
 function setMode(value) {
@@ -347,7 +436,7 @@ function setMode(value) {
   $('mode-timeline').setAttribute('aria-pressed', String(mode === 'timeline'));
   $('mode-clock').setAttribute('aria-pressed', String(mode === 'clock'));
   $('timeline-help').hidden = mode !== 'timeline';
-  $('clock-help').hidden = $('clock-fields').hidden = $('read-clocks').hidden = mode !== 'clock';
+  $('clock-help').hidden = $('clock-fields').hidden = $('read-clocks').hidden = $('find-clocks').hidden = mode !== 'clock';
   $('calibrate').textContent = mode === 'clock' ? 'Aplicar tempos informados' : 'Marcar mesmo momento';
   if (mode !== 'clock') clearCaptures();
   status('Modo selecionado', mode === 'clock' ? 'Selecione os dois relógios ou informe os tempos com os vídeos pausados.' : 'Pause e alinhe os dois vídeos; depois marque a referência.');
@@ -379,6 +468,7 @@ for (const role of roles) {
   listen(role + '-capture', () => selectClock(role));
 }
 listen('refresh', refreshTabs);
+listen('find-clocks', findBothClocks);
 listen('mode-timeline', () => setMode('timeline'));
 listen('mode-clock', () => setMode('clock'));
 $('direction').addEventListener('change', () => { stop(false); clearAnchor(); status('Direção atualizada', 'Marque uma nova referência ou inicie a leitura dos dois relógios.'); });
