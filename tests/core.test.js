@@ -22,17 +22,22 @@ test('corrects either direction and countdown without confusing media and conten
 const state = { time: 100, ready: 4, rate: 1, seeking: false, ranges: [[50, 200]], paused: false };
 const decide = (target, overrides = {}) => decideCorrection({ target, reference: state, follower: state, now: 10000, ...overrides });
 
-test('footage a player cannot reach is waited for instead, or refused', () => {
+test('the video that is ahead goes back, or waits; only then the other skips ahead', () => {
+  // B 12 s behind: A (ahead) rewinds 12 s.
+  assert.deepEqual(decide(112), { action: 'seek', role: 'reference', to: 88, error: 12 });
+  // B 12 s ahead: B rewinds.
+  assert.deepEqual(decide(88), { action: 'seek', role: 'follower', to: 88, error: -12 });
+  // A is ahead but a live with no rewind: A pauses for the difference…
+  const live = { ...state, ranges: [[99, 100.5]] };
+  assert.deepEqual(decide(112, { reference: live }), { action: 'hold', role: 'reference', seconds: 12, error: 12 });
+  // …unless its player can't be held (jumps to live): then B skips ahead.
+  assert.deepEqual(decide(112, { reference: live, canHold: { reference: false, follower: true } }), { action: 'seek', role: 'follower', to: 112, error: 12 });
+  assert.deepEqual(decide(88, { reference: live, follower: live }), { action: 'hold', role: 'follower', seconds: 12, error: -12 });
+  assert.deepEqual(decide(112, { reference: live, follower: live }), { action: 'hold', role: 'reference', seconds: 12, error: 12 });
   const noHold = { reference: false, follower: false };
-  assert.equal(decide(30, { canHold: noHold }).action, 'unavailable');
-  assert.equal(decide(220, { canHold: noHold }).action, 'unavailable');
-  assert.equal(decide(110, { follower: { ...state, ranges: [[0, 100], [120, 200]] }, canHold: noHold }).action, 'unavailable');
-  // B is 70 s ahead and can't rewind: B pauses for 70 s.
-  assert.deepEqual(decide(30), { action: 'hold', role: 'follower', seconds: 70, error: -70 });
-  // B is 120 s behind and can't jump forward: A pauses instead.
-  assert.deepEqual(decide(220), { action: 'hold', role: 'reference', seconds: 120, error: 120 });
-  assert.equal(decide(30, { canHold: { reference: true, follower: false } }).action, 'unavailable');
-  assert.equal(decide(400).action, 'unavailable', 'never pauses for more than 3 minutes');
+  assert.equal(decide(88, { reference: live, follower: live, canHold: noHold }).action, 'unavailable');
+  assert.equal(decide(110, { reference: live, follower: { ...state, ranges: [[0, 100], [120, 200]] }, canHold: noHold }).action, 'unavailable');
+  assert.equal(decide(400, { reference: live, follower: live }).action, 'unavailable', 'never pauses for more than 3 minutes');
 });
 
 test('does not chase tiny differences or repeatedly seek, buffer, or ads', () => {

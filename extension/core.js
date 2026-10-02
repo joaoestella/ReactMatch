@@ -32,10 +32,17 @@ export function clockTarget(referenceClock, followerClock, followerPosition, dir
   return followerPosition + (referenceClock - followerClock) * direction + trim;
 }
 
-// When the follower can't seek to the target (a live player with little or no
-// rewind), the video that is ahead can still wait: pausing it for the
-// difference and resuming lines them up, as long as the player keeps its
-// buffer while paused. `canHold` turns that off per side.
+// Decides how to bring the two videos together. `target` is where the
+// follower should be; the order of the two videos doesn't matter to the user,
+// so the rule is symmetric: the video that is AHEAD goes back (nobody misses
+// a second of either video). If it can't rewind (a live with little or no
+// DVR), it pauses for the difference and resumes, as long as its player keeps
+// buffering while paused. Only when that's not possible either (`canHold`
+// off, e.g. a player that jumps back to live) does the one behind skip ahead.
+//
+// Returns { action: 'seek', role, to } | { action: 'hold', role, seconds } |
+// { action: 'aligned' } | { action: 'wait' | 'unavailable', reason }, all with
+// `error` (seconds the follower is behind; negative when it is ahead).
 export function decideCorrection({ target, follower, reference, tolerance = 0.85, maxSeek = Infinity, lastSeek = -Infinity, now = performance.now(), canHold = { reference: true, follower: true }, maxHold = 180 }) {
   if (!Number.isFinite(target)) return { action: 'wait', reason: 'noAnchor' };
   if (reference.ad || follower.ad) return { action: 'wait', reason: 'ad' };
@@ -48,15 +55,18 @@ export function decideCorrection({ target, follower, reference, tolerance = 0.85
   if (Math.abs(error) <= tolerance) return { action: 'aligned', error };
   if (Math.abs(error) > maxSeek) return { action: 'wait', error, reason: 'tooFar' };
   if (now - lastSeek < 3000) return { action: 'wait', error, reason: 'checking' };
-  if (!insideRanges(target, follower.ranges)) {
-    // error < 0: B is ahead and must wait. error > 0: B can't jump ahead, so A waits.
-    const role = error < 0 ? 'follower' : 'reference';
-    if (canHold[role] && Math.abs(error) <= maxHold && !(role === 'reference' ? reference : follower).paused) {
-      return { action: 'hold', role, seconds: Math.abs(error), error };
-    }
-    return { action: 'unavailable', error, reason: 'unavailable' };
+  const states = { reference, follower };
+  // Where each side would have to go: the follower to `target`, or the
+  // reference by the same amount the other way.
+  const moves = { follower: target, reference: reference.time - error };
+  const ahead = error < 0 ? 'follower' : 'reference';
+  const behind = ahead === 'follower' ? 'reference' : 'follower';
+  if (insideRanges(moves[ahead], states[ahead].ranges)) return { action: 'seek', role: ahead, to: moves[ahead], error };
+  if (canHold[ahead] && Math.abs(error) <= maxHold && !states[ahead].paused) {
+    return { action: 'hold', role: ahead, seconds: Math.abs(error), error };
   }
-  return { action: 'seek', target, error };
+  if (insideRanges(moves[behind], states[behind].ranges)) return { action: 'seek', role: behind, to: moves[behind], error };
+  return { action: 'unavailable', error, reason: 'unavailable' };
 }
 
 // Clock-looking tokens ("25:40", "1:02:45") in the words OCR found on a whole
@@ -107,7 +117,8 @@ export function findClocks(frames) {
       const ok = track.every((seen, i) => !seen || Math.abs((seen.value - track[0].value) * direction - (frames[i].time - first.time)) <= 1.2);
       const seenCount = track.filter(Boolean).length;
       if (ok && seenCount >= 2 && track[0].value !== token.value) {
-        found.push({ ...token, direction, seen: seenCount });
+        // `readings`: what this clock showed on each frame, for a quick first estimate.
+        found.push({ ...token, direction, seen: seenCount, readings: track.map((seen, i) => seen ? { value: seen.value, time: frames[i].time } : null) });
         break;
       }
     }
@@ -118,7 +129,7 @@ export function findClocks(frames) {
 // Region to read for a found clock: its box with a little margin.
 // `aspect` is the frame's width / height (boxes are relative to each axis).
 export function regionAround(box, aspect = 16 / 9) {
-  const padX = box.h * 0.5 / aspect, padY = box.h * 0.4;
+  const padX = box.h * 0.35 / aspect, padY = box.h * 0.4;
   const x = Math.max(0, box.x - padX), y = Math.max(0, box.y - padY);
   return { x, y, w: Math.min(1 - x, box.w + padX * 2), h: Math.min(1 - y, box.h + padY * 2) };
 }
