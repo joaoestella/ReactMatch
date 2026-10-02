@@ -14,7 +14,7 @@ const shots = path.resolve(__dirname, '../docs/images');
     executablePath: process.env.CHROMIUM || chromium.executablePath(),
     headless: true,
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, '--lang=en-US'],
-    viewport: { width: 1160, height: 1050 }
+    viewport: { width: 460, height: 1100 }
   });
   try {
     const worker = context.serviceWorkers()[0] || await context.waitForEvent('serviceworker');
@@ -24,20 +24,21 @@ const shots = path.resolve(__dirname, '../docs/images');
     await page.goto(`chrome-extension://${id}/panel.html`);
     const title = () => page.locator('#status-title').textContent();
     const waitTitle = text => page.waitForFunction(text => document.getElementById('status-title').textContent === text, text, { timeout: 15000 });
-    await page.waitForFunction(() => document.getElementById('find-clocks').textContent === 'Find clocks');
+    await page.waitForFunction(() => document.getElementById('start').textContent === 'Sync now');
     assert.equal(await page.locator('#start').isDisabled(), true);
     fs.mkdirSync(shots, { recursive: true });
     await page.screenshot({ path: path.join(shots, 'panel-en.png'), fullPage: true });
 
     // Demo: a simulated 14 s difference, recovery from a 6 s drift, fine adjustment.
+    await page.locator('details.help > summary').click();
     await page.locator('#demo').click();
     await waitTitle('Try a 14-second difference');
-    await page.locator('#calibrate').click();
+    await page.locator('#apply-times').click();
     await waitTitle('Reference marked');
     await page.locator('#start').click();
     await waitTitle('Videos in sync');
     await page.locator('#simulate-drift').click();
-    await waitTitle('Adjusting video B');
+    await waitTitle('Adjusting video 1');
     await waitTitle('Videos in sync');
     await page.locator('#trim-plus').click();
     assert.equal(await page.locator('#trim-value').textContent(), '+0.5 s');
@@ -48,13 +49,13 @@ const shots = path.resolve(__dirname, '../docs/images');
 
     // Language menu: Portuguese and Spanish, saved for next time.
     await page.locator('#lang').selectOption('pt');
-    await page.waitForFunction(() => document.getElementById('find-clocks').textContent === 'Encontrar relógios');
+    await page.waitForFunction(() => document.getElementById('arrange').textContent === '⧉ Pôr lado a lado');
     assert.equal(await page.evaluate(() => document.documentElement.lang), 'pt-BR');
     await page.screenshot({ path: path.join(shots, 'panel-pt.png'), fullPage: true });
     await page.locator('#lang').selectOption('es');
-    await page.waitForFunction(() => document.getElementById('find-clocks').textContent === 'Encontrar relojes');
+    await page.waitForFunction(() => document.getElementById('arrange').textContent === '⧉ Poner lado a lado');
     await page.reload();
-    await page.waitForFunction(() => document.getElementById('find-clocks').textContent === 'Encontrar relojes');
+    await page.waitForFunction(() => document.getElementById('arrange').textContent === '⧉ Poner lado a lado');
     await page.locator('#lang').selectOption('en');
 
     // The bundled OCR, under the extension's real CSP and without network.
@@ -72,7 +73,7 @@ const shots = path.resolve(__dirname, '../docs/images');
     assert.ok(reading.confidence >= 65, JSON.stringify(reading));
 
     // Every language fits a narrow window.
-    await page.setViewportSize({ width: 480, height: 950 });
+    await page.setViewportSize({ width: 360, height: 950 });
     for (const lang of ['en', 'pt', 'es']) {
       await page.locator('#lang').selectOption(lang);
       await page.waitForTimeout(150);

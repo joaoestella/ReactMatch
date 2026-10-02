@@ -2,11 +2,13 @@
 // burned into the video, 20 s apart. Needs ffmpeg with drawtext on PATH to
 // build the fixtures. Run: npm run test:browser
 //
-// 1. The game is embedded from another site (iframe). "Find clocks" must pick
-//    the match clocks (not the uptime nor a static "Replay 12:30"), sync, and
-//    recover from a 7 s jump.
-// 2. The game is a live with a 3 s rewind window: B has to pause to wait.
-// 3. Same live, but the player jumps back to live when resumed: detected.
+// Video 1 is the game, video 2 the reaction; one click on "Sync now".
+// 1. The game is embedded from another site (iframe). It must pick the match
+//    clocks (not the uptime nor a static "Replay 12:30"), sync, and recover
+//    from a 7 s jump.
+// 2. The game is a live with a 3 s rewind window: being ahead, it pauses.
+// 3. Same live, but the player jumps back to live when resumed: detected,
+//    and the reaction skips ahead instead.
 const { chromium } = require('playwright');
 const path = require('node:path');
 const fs = require('node:fs');
@@ -114,7 +116,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
     const panelUrl = `chrome-extension://${new URL(worker.url()).host}/panel.html`;
     const errors = [];
 
-    async function scenario(gamePath, frameOf) {
+    async function scenario(gamePath, frameOf, arrange = false) {
       const panel = await context.newPage();
       panel.on('pageerror', error => errors.push(error.message));
       await panel.goto(panelUrl);
@@ -133,56 +135,67 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
       await panel.locator('#refresh').click();
       const tabs = await panel.evaluate(async () => (await chrome.tabs.query({})).map(tab => [tab.id, tab.url]));
       const tabOf = suffix => String(tabs.find(tab => tab[1].endsWith(suffix))[0]);
-      for (const [role, suffix] of [['reference', '/reaction'], ['follower', gamePath]]) {
+      for (const [role, suffix] of [['reference', gamePath], ['follower', '/reaction']]) {
         await panel.locator(`#${role}-tab`).selectOption(tabOf(suffix));
         await panel.locator(`#${role}-connect`).click();
         await panel.waitForFunction(role => document.getElementById(`${role}-connection`).textContent === 'Connected', role);
       }
       const waitTitle = (test, timeout = 30000) => panel.waitForFunction(test => document.getElementById('status-title').textContent.startsWith(test), test, { timeout })
         .catch(async error => { throw new Error(`${error.message}\nstatus: ${await panel.locator('#status-title').textContent()} | ${await panel.locator('#status-detail').textContent()}`); });
-      const started = Date.now();
-      await panel.locator('#find-clocks').click();
-      await waitTitle('Clocks ready');
-      const found = [await panel.locator('#reference-capture').textContent(), await panel.locator('#follower-capture').textContent()];
       const offset = async () => (await frame.evaluate(() => document.getElementById('v').currentTime)) - (await creator.evaluate(() => document.getElementById('v').currentTime));
-      return { panel, creator, gamePage, frame, waitTitle, offset, found, findMs: Date.now() - started };
+      const labels = async () => [await panel.locator('#reference-capture').textContent(), await panel.locator('#follower-capture').textContent()];
+      if (arrange) {
+        // Each video gets its own window, so neither is a background tab.
+        await panel.locator('#arrange').click();
+        await waitTitle('Videos side by side');
+        const windows = await panel.evaluate(async ids => Promise.all(ids.map(async id => (await chrome.tabs.get(id)).windowId)), [Number(tabOf(gamePath)), Number(tabOf('/reaction'))]);
+        assert.notEqual(windows[0], windows[1]);
+      }
+      // One click: finds both clocks and starts syncing.
+      await panel.locator('#start').click();
+      return { panel, creator, gamePage, frame, waitTitle, offset, labels, started: Date.now() };
     }
 
     // 1. Embedded player on another site.
-    const embedded = await scenario('/game', page => page.frames().find(frame => frame.url().includes('/embed')));
-    assert.match(embedded.found[0], /^Clock 25:\d\d · change$/, 'reaction: the match clock, not the uptime');
-    assert.match(embedded.found[1], /^Clock 25:\d\d · change$/, 'game: the match clock, not "Replay 12:30"');
-    await embedded.panel.locator('#start').click();
+    const embedded = await scenario('/game', page => page.frames().find(frame => frame.url().includes('/embed')), true);
     await embedded.waitTitle('Videos in sync');
+    const syncMs = Date.now() - embedded.started;
+    const found = await embedded.labels();
+    assert.match(found[0], /^Clock 2[5-7]:\d\d · change$/, 'game: the match clock, not "Replay 12:30"');
+    assert.match(found[1], /^Clock 2[5-7]:\d\d · change$/, 'reaction: the match clock, not the uptime');
     const synced = await embedded.offset();
     assert.ok(Math.abs(synced + 20) < 0.6, `offset after sync ${synced}`);
     await embedded.frame.evaluate(() => { document.getElementById('v').currentTime += 7; });
-    await embedded.waitTitle('Adjusting video B');
+    await embedded.waitTitle('Adjusting video 1');
     await embedded.waitTitle('Videos in sync');
     await sleep(3000);
     const recovered = await embedded.offset();
     assert.ok(Math.abs(recovered + 20) < 0.6, `offset after drift ${recovered}`);
-    report.embedded = { found: embedded.found, findMs: embedded.findMs, offsetAfterSync: +synced.toFixed(2), offsetAfterDrift: +recovered.toFixed(2) };
+    report.embedded = { found, msToSync: syncMs, offsetAfterSync: +synced.toFixed(2), offsetAfterDrift: +recovered.toFixed(2) };
     await embedded.panel.close(); await embedded.creator.close(); await embedded.gamePage.close();
 
-    // 2. Live game with 3 s of rewind: B waits by pausing.
+    // 2. Live game with 3 s of rewind, ahead of the reaction: it waits by pausing.
     const live = await scenario('/live', page => page.mainFrame());
-    await live.panel.locator('#start').click();
-    await live.waitTitle('Holding video B');
+    await live.waitTitle('Holding video 1');
     const holdText = await live.panel.locator('#status-detail').textContent();
     await live.waitTitle('Videos in sync', 40000);
     await sleep(3000);
     const held = await live.offset();
     assert.ok(Math.abs(held + 20) < 0.8, `offset after hold ${held}`);
-    report.liveHold = { found: live.found, hold: holdText, offsetAfterHold: +held.toFixed(2) };
+    report.liveHold = { found: await live.labels(), hold: holdText, offsetAfterHold: +held.toFixed(2) };
     await live.panel.close(); await live.creator.close(); await live.gamePage.close();
 
     // 3. A live player that jumps to live when resumed.
+    //    Then the reaction, which can, skips ahead instead.
     const jumpy = await scenario('/live?jump', page => page.mainFrame());
-    await jumpy.panel.locator('#start').click();
-    await jumpy.waitTitle('Holding video B');
-    await jumpy.waitTitle('Video B jumps back to live', 40000);
-    report.liveJumpDetected = true;
+    await jumpy.waitTitle('Holding video 1');
+    await jumpy.waitTitle('Video 1 jumps back to live', 40000);
+    await jumpy.waitTitle('Adjusting video 2', 30000);
+    await jumpy.waitTitle('Videos in sync', 30000);
+    await sleep(3000);
+    const skipped = await jumpy.offset();
+    assert.ok(Math.abs(skipped + 20) < 0.8, `offset after the reaction skipped ahead ${skipped}`);
+    report.liveJump = { detected: true, offsetAfterSkip: +skipped.toFixed(2) };
 
     assert.deepEqual(errors, []);
     report.pageErrors = errors;
