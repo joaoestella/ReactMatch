@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 export class DemoAdapter {
   constructor() {
     this.media = { 1: { time: 494, paused: true }, 2: { time: 508, paused: true } };
@@ -9,7 +11,7 @@ export class DemoAdapter {
     for (const video of Object.values(this.media)) if (!video.paused) video.time += elapsed;
     this.last = now;
   }
-  async tabs() { return [{ id: 1, title: 'Demonstração · conteúdo original', url: 'demo:original' }, { id: 2, title: 'Demonstração · vídeo de reação', url: 'demo:reaction' }]; }
+  async tabs() { return [{ id: 1, title: t('demo.original'), url: 'demo:original' }, { id: 2, title: t('demo.reaction'), url: 'demo:reaction' }]; }
   async connect(tabId) { return { videos: [{ ...(await this.command({ tabId, videoId: 'demo' }, 'snapshot')), frameId: 0 }], missing: [] }; }
   async command(source, operation, value) {
     this.step();

@@ -1,5 +1,6 @@
 import { clockFromOCR, clockTokens } from './core.js';
 import { textBoxes } from './finder.js';
+import { t } from './i18n.js';
 
 // Tesseract runs locally, from the files bundled in vendor/.
 
@@ -10,14 +11,14 @@ export class LocalOCR {
   constructor() { this.workerPromise = null; this.failure = null; this.mode = null; }
   async worker() {
     if (this.failure) throw new Error(this.failure);
-    if (!globalThis.Tesseract) throw new Error('Os arquivos de leitura local não foram encontrados. Use a pasta completa da extensão.');
+    if (!globalThis.Tesseract) throw new Error(t('ocr.missing'));
     if (!this.workerPromise) {
       const base = new URL('vendor/', import.meta.url).href;
       this.workerPromise = Tesseract.createWorker('eng', 1, {
         workerPath: `${base}tesseract/worker.min.js`,
         corePath: `${base}core`, langPath: `${base}lang`,
         workerBlobURL: false, gzip: true,
-        errorHandler: error => { this.failure = `Falha na leitura local: ${error.message || error}`; }
+        errorHandler: error => { this.failure = t('ocr.failed', { message: error.message || error }); }
       });
     }
     return this.workerPromise;
@@ -60,7 +61,7 @@ export function loadImage(src) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Não foi possível abrir a imagem do vídeo.'));
+    image.onerror = () => reject(new Error(t('image.failed')));
     image.src = src;
   });
 }
@@ -95,7 +96,7 @@ export async function scanClocks(ocr, src, lines = null) {
 export function cropFrame(capture) {
   const { video, region } = capture;
   if (video.readyState < 2 || !video.videoWidth || !video.videoHeight || capture.stream.getVideoTracks()[0]?.readyState !== 'live') {
-    throw new Error('A captura parou. Selecione o relógio novamente.');
+    throw new Error(t('capture.stopped'));
   }
   const width = Math.max(1, Math.round(region.w * video.videoWidth));
   const height = Math.max(1, Math.round(region.h * video.videoHeight));
@@ -116,7 +117,7 @@ export async function startTabCapture() {
   const track = stream.getVideoTracks()[0];
   if (track.getSettings().displaySurface !== 'browser') {
     stream.getTracks().forEach(t => t.stop());
-    throw new Error('Selecione uma aba do navegador, em vez da tela inteira ou de uma janela.');
+    throw new Error(t('capture.pickTab'));
   }
   const video = document.createElement('video');
   video.muted = true; video.srcObject = stream;
@@ -142,7 +143,7 @@ export async function selectRegion(dialog, still, { suggested = null, options = 
   const save = document.querySelector('#crop-save');
   const description = document.querySelector('#crop-description');
   save.disabled = !region;
-  description.textContent = region ? 'Relógio encontrado. Confirme ou arraste para ajustar.' : 'Nenhuma região selecionada.';
+  description.textContent = region ? t('crop.found') : t('crop.none');
   function render() {
     context.drawImage(frozen, 0, 0);
     if (!region) return;
@@ -153,7 +154,7 @@ export async function selectRegion(dialog, still, { suggested = null, options = 
     context.strokeRect(x * canvas.width, y * canvas.height, w * canvas.width, h * canvas.height);
     save.disabled = w * sourceWidth < 15 || h * sourceHeight < 8;
     if (!start && region === suggested) return;
-    description.textContent = save.disabled ? 'Selecione uma região maior.' : 'Região selecionada. Confirme se contém somente o relógio desejado.';
+    description.textContent = save.disabled ? t('crop.bigger') : t('crop.selected');
   }
   const point = event => {
     const rect = canvas.getBoundingClientRect();
@@ -163,7 +164,7 @@ export async function selectRegion(dialog, still, { suggested = null, options = 
   choices.hidden = options.length < 2;
   choices.replaceChildren();
   if (options.length > 1) {
-    choices.append('Relógios encontrados:');
+    choices.append(t('crop.options'));
     for (const option of options) {
       const button = document.createElement('button');
       button.type = 'button';

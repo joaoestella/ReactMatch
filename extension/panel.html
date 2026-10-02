@@ -1,55 +1,59 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SyncVideo · no mesmo momento</title>
+  <title>SyncVideo</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <div class="app">
     <header class="topbar">
-      <a class="brand" href="panel.html" aria-label="SyncVideo, início"><span class="brand-icon" aria-hidden="true">⇄</span> Sync<span>Video</span></a>
-      <div class="top-meta"><span class="local-dot"></span> Tudo neste dispositivo <span class="version">PRÉVIA 0.1</span></div>
+      <a class="brand" href="panel.html" data-i18n-aria-label="brand.home"><span class="brand-icon" aria-hidden="true">⇄</span> Sync<span>Video</span></a>
+      <div class="top-meta">
+        <span class="local-dot"></span> <span data-i18n="top.local"></span>
+        <label class="lang" data-i18n-title="lang.label"><span aria-hidden="true">🌐</span><select id="lang" data-i18n-aria-label="lang.label"></select></label>
+        <span class="version"><span data-i18n="top.preview"></span> <span id="version"></span></span>
+      </div>
     </header>
     <main>
-      <div class="intro"><div><p class="eyebrow">DOIS VÍDEOS. UM MOMENTO.</p><h1>Acompanhe sem perder o ritmo.</h1><p class="subhead">Seu filme, sua série, seu evento. A reação no tempo certo.</p></div><button id="demo" class="button secondary">Experimentar demonstração <span aria-hidden="true">↗</span></button></div>
-      <div id="demo-banner" class="notice demo-notice" hidden>Demonstração com relógios simulados. Nenhuma aba ou vídeo real está sendo controlado. <button id="leave-demo" class="text-button">Sair da demonstração</button></div>
-      <section class="workspace" aria-label="Vídeos da sessão">
+      <div class="intro"><div><p class="eyebrow" data-i18n="intro.eyebrow"></p><h1 data-i18n="intro.title"></h1><p class="subhead" data-i18n="intro.sub"></p></div><button id="demo" class="button secondary"><span id="demo-label" data-i18n="demo.try"></span> <span aria-hidden="true">↗</span></button></div>
+      <div id="demo-banner" class="notice demo-notice" hidden><span data-i18n="demo.banner"></span> <button id="leave-demo" class="text-button" data-i18n="demo.leave"></button></div>
+      <section class="workspace" data-i18n-aria-label="workspace.label">
         <article class="source-card" data-role="reference">
-          <div class="card-heading"><span class="role-badge">A</span><div><h2>Vídeo de referência</h2><p>O momento que você quer acompanhar</p></div><span class="connection" id="reference-connection">Não conectado</span></div>
-          <div class="video-art art-reference"><div class="art-grid"></div><span class="visual-symbol" aria-hidden="true">▷</span><span class="art-label" id="reference-title">Escolha o que vamos acompanhar</span><span class="media-time" id="reference-time">—:—</span></div>
-          <div class="source-controls"><label for="reference-tab">Aba do navegador</label><div class="input-row"><select id="reference-tab"><option value="">Selecione uma aba</option></select><button id="reference-connect" class="button secondary">Conectar</button></div>
-            <label class="player-label" for="reference-player" hidden>Player encontrado</label><select id="reference-player" class="player-select" hidden></select>
-            <div class="source-footer"><span id="reference-info">Abra o conteúdo e dê play antes de conectar.</span><button id="reference-capture" class="text-button" disabled>Selecionar relógio</button></div>
+          <div class="card-heading"><span class="role-badge">A</span><div><h2 data-i18n="a.title"></h2><p data-i18n="a.sub"></p></div><span class="connection" id="reference-connection" data-i18n="conn.none"></span></div>
+          <div class="video-art art-reference"><div class="art-grid"></div><span class="visual-symbol" aria-hidden="true">▷</span><span class="art-label" id="reference-title" data-i18n="a.placeholder"></span><span class="media-time" id="reference-time">—:—</span></div>
+          <div class="source-controls"><label for="reference-tab" data-i18n="tab.label"></label><div class="input-row"><select id="reference-tab"><option value="" data-i18n="tabs.pick"></option></select><button id="reference-connect" class="button secondary" data-i18n="tab.connect"></button></div>
+            <label class="player-label" for="reference-player" hidden data-i18n="player.found"></label><select id="reference-player" class="player-select" hidden></select>
+            <div class="source-footer"><span id="reference-info" data-i18n="a.info"></span><button id="reference-capture" class="text-button" disabled data-i18n="clock.select"></button></div>
             <button id="reference-allow" class="button secondary allow" hidden></button>
           </div>
         </article>
         <div class="link-symbol" aria-hidden="true">⇢</div>
         <article class="source-card" data-role="follower">
-          <div class="card-heading"><span class="role-badge purple">B</span><div><h2>Vídeo que acompanha</h2><p>Este vídeo receberá os ajustes</p></div><span class="connection" id="follower-connection">Não conectado</span></div>
-          <div class="video-art art-follower"><div class="art-grid"></div><span class="visual-symbol" aria-hidden="true">▷</span><span class="art-label" id="follower-title">Escolha a reação ou o segundo vídeo</span><span class="media-time" id="follower-time">—:—</span></div>
-          <div class="source-controls"><label for="follower-tab">Aba do navegador</label><div class="input-row"><select id="follower-tab"><option value="">Selecione uma aba</option></select><button id="follower-connect" class="button secondary">Conectar</button></div>
-            <label class="player-label" for="follower-player" hidden>Player encontrado</label><select id="follower-player" class="player-select" hidden></select>
-            <div class="source-footer"><span id="follower-info">Pode ser uma live, um react ou outro conteúdo.</span><button id="follower-capture" class="text-button" disabled>Selecionar relógio</button></div>
+          <div class="card-heading"><span class="role-badge purple">B</span><div><h2 data-i18n="b.title"></h2><p data-i18n="b.sub"></p></div><span class="connection" id="follower-connection" data-i18n="conn.none"></span></div>
+          <div class="video-art art-follower"><div class="art-grid"></div><span class="visual-symbol" aria-hidden="true">▷</span><span class="art-label" id="follower-title" data-i18n="b.placeholder"></span><span class="media-time" id="follower-time">—:—</span></div>
+          <div class="source-controls"><label for="follower-tab" data-i18n="tab.label"></label><div class="input-row"><select id="follower-tab"><option value="" data-i18n="tabs.pick"></option></select><button id="follower-connect" class="button secondary" data-i18n="tab.connect"></button></div>
+            <label class="player-label" for="follower-player" hidden data-i18n="player.found"></label><select id="follower-player" class="player-select" hidden></select>
+            <div class="source-footer"><span id="follower-info" data-i18n="b.info"></span><button id="follower-capture" class="text-button" disabled data-i18n="clock.select"></button></div>
             <button id="follower-allow" class="button secondary allow" hidden></button>
           </div>
         </article>
       </section>
-      <div class="workspace-tools"><span>O vídeo A orienta. O vídeo B acompanha.</span><button id="refresh" class="text-button">↻ Atualizar abas</button></div>
+      <div class="workspace-tools"><span data-i18n="tools.hint"></span><button id="refresh" class="text-button" data-i18n="tools.refresh"></button></div>
       <section class="sync-card" aria-labelledby="sync-title">
-        <div class="sync-header"><div><p class="eyebrow">SEU PONTO DE ENCONTRO</p><h2 id="sync-title">Como vamos alinhar?</h2></div><div class="mode-tabs" role="group" aria-label="Modo de sincronização"><button id="mode-timeline" aria-pressed="true" class="selected">Mesmo momento</button><button id="mode-clock" aria-pressed="false">Relógios na imagem</button></div></div>
-        <div id="timeline-help" class="mode-description"><strong>Para vídeos sem cronômetro visível.</strong> Pause e posicione os dois vídeos na mesma cena ou no ponto indicado pelo criador. Depois marque a referência. O acompanhamento mantém essa relação entre os vídeos.</div>
-        <div id="clock-help" class="mode-description" hidden><strong>Para conteúdo com cronômetros comparáveis.</strong> Com os dois vídeos tocando, clique em “Encontrar relógios”: a extensão procura os cronômetros que avançam junto com o vídeo. Você também pode marcar cada relógio à mão, ou pausar e informar os tempos. Os relógios precisam representar o mesmo conteúdo e a mesma etapa.</div>
-        <div id="clock-fields" class="clock-fields" hidden><label>Relógio no vídeo A<input id="clock-reference" type="text" placeholder="00:25:40" inputmode="numeric" autocomplete="off"></label><label>Relógio no vídeo B<input id="clock-follower" type="text" placeholder="00:25:28" inputmode="numeric" autocomplete="off"></label><label>Direção<select id="direction"><option value="1">Contagem crescente</option><option value="-1">Contagem regressiva</option></select></label></div>
-        <div class="calibration-row"><div class="button-group"><button id="pause-both" class="button secondary" disabled>Pausar os dois</button><button id="calibrate" class="button secondary" disabled>Marcar mesmo momento</button><button id="find-clocks" class="button secondary" hidden disabled>Encontrar relógios</button><button id="read-clocks" class="button secondary" hidden disabled>Ler relógios agora</button><button id="clear-captures" class="text-button" hidden>Encerrar capturas</button></div><span id="anchor-label" class="muted">Referência ainda não definida</span></div>
-        <div class="sync-bottom"><div class="session-status"><span id="status-dot" class="status-dot"></span><div><strong id="status-title">Vamos conectar seus vídeos</strong><p id="status-detail" role="status" aria-live="polite">Escolha as duas abas para começar.</p></div></div><button id="start" class="button primary" disabled>Iniciar acompanhamento <span aria-hidden="true">→</span></button></div>
+        <div class="sync-header"><div><p class="eyebrow" data-i18n="sync.eyebrow"></p><h2 id="sync-title" data-i18n="sync.title"></h2></div><div class="mode-tabs" role="group" data-i18n-aria-label="mode.label"><button id="mode-clock" aria-pressed="true" class="selected" data-i18n="mode.clock"></button><button id="mode-timeline" aria-pressed="false" data-i18n="mode.timeline"></button></div></div>
+        <div id="clock-help" class="mode-description"><strong data-i18n="help.clock.title"></strong> <span data-i18n="help.clock"></span></div>
+        <div id="timeline-help" class="mode-description" hidden><strong data-i18n="help.timeline.title"></strong> <span data-i18n="help.timeline"></span></div>
+        <div id="clock-fields" class="clock-fields"><label><span data-i18n="fields.a"></span><input id="clock-reference" type="text" placeholder="00:25:40" inputmode="numeric" autocomplete="off"></label><label><span data-i18n="fields.b"></span><input id="clock-follower" type="text" placeholder="00:25:28" inputmode="numeric" autocomplete="off"></label><label><span data-i18n="fields.direction"></span><select id="direction"><option value="1" data-i18n="fields.up"></option><option value="-1" data-i18n="fields.down"></option></select></label></div>
+        <div class="calibration-row"><div class="button-group"><button id="find-clocks" class="button secondary" disabled data-i18n="btn.find"></button><button id="pause-both" class="button secondary" disabled data-i18n="btn.pauseBoth"></button><button id="calibrate" class="button secondary" disabled data-i18n="calibrate.clock"></button><button id="read-clocks" class="button secondary" disabled data-i18n="btn.read"></button><button id="clear-captures" class="text-button" hidden data-i18n="btn.clearCaptures"></button></div><span id="anchor-label" class="muted" data-i18n="anchor.none"></span></div>
+        <div class="sync-bottom"><div class="session-status"><span id="status-dot" class="status-dot"></span><div><strong id="status-title" data-i18n="status.welcome"></strong><p id="status-detail" role="status" aria-live="polite" data-i18n="status.welcome.detail"></p></div></div><button id="start" class="button primary" disabled data-i18n="start.start"></button></div>
       </section>
-      <section class="fine-row" aria-label="Ajuste fino"><div><h3>Ajuste do seu jeito</h3><p>Desloque o vídeo B em relação à referência.</p></div><div class="fine-controls"><button id="trim-minus" class="button small" disabled aria-label="Atrasar o vídeo B em meio segundo">− 0,5s</button><output id="trim-value">0,0s</output><button id="trim-plus" class="button small" disabled aria-label="Adiantar o vídeo B em meio segundo">+ 0,5s</button><button id="trim-reset" class="text-button" disabled>Zerar</button></div><button id="simulate-drift" class="text-button" hidden>Simular atraso de 6s</button></section>
-      <details class="help"><summary>O que esta primeira versão consegue fazer?</summary><div><p>Controla vídeos HTML5 acessíveis no navegador, com permissão apenas nos sites que você conectar. Não exige conta e não envia capturas para servidores.</p><p>No modo “Mesmo momento”, pausas e posições do vídeo A orientam o vídeo B. Cortes, anúncios, troca de episódio e pausas do conteúdo dentro de um react podem exigir nova calibração.</p><p>O modo de relógios usa uma região selecionada por você. A leitura contínua é experimental; relógios ausentes, parados ou inconsistentes suspendem os ajustes. Voltar ou avançar depende do trecho disponível em cada player.</p><p>Mantenha esta janela aberta e visível. Players protegidos, vídeos dentro de iframes, TVs e aplicativos fora do navegador não têm compatibilidade garantida. Encontrar relógios automaticamente e links para comunidades ainda não fazem parte desta versão.</p><p>Fechar a janela encerra o acompanhamento. Os vídeos permanecem na posição e no estado de reprodução em que ficaram.</p></div></details>
+      <section class="fine-row" data-i18n-aria-label="fine.label"><div><h3 data-i18n="fine.title"></h3><p data-i18n="fine.sub"></p></div><div class="fine-controls"><button id="trim-minus" class="button small" disabled data-i18n-aria-label="fine.minus">− 0.5 s</button><output id="trim-value">0.0 s</output><button id="trim-plus" class="button small" disabled data-i18n-aria-label="fine.plus">+ 0.5 s</button><button id="trim-reset" class="text-button" disabled data-i18n="fine.reset"></button></div><button id="simulate-drift" class="text-button" hidden data-i18n="demo.drift"></button></section>
+      <details class="help"><summary data-i18n="help.summary"></summary><div><p data-i18n="help.p1"></p><p data-i18n="help.p2"></p><p data-i18n="help.p3"></p><p data-i18n="help.p4"></p></div></details>
     </main>
-    <footer><span>SyncVideo <span class="footer-divider">/</span> No mesmo momento.</span><span>Séries · Filmes · Lives · Esportes · Aulas</span></footer>
+    <footer><span>SyncVideo <span class="footer-divider">/</span> <span data-i18n="footer.tag"></span></span><span data-i18n="footer.kinds"></span><a href="https://joaoestella.github.io/SyncVideo/" target="_blank" rel="noopener" data-i18n="privacy.link"></a></footer>
   </div>
-  <dialog id="crop-dialog"><div class="dialog-header"><div><p class="eyebrow">LEITURA LOCAL</p><h2>Marque somente o relógio</h2></div><button id="crop-close" class="button small" aria-label="Cancelar seleção">✕</button></div><p>Arraste sobre os números. Evite placares e outros textos. A captura deve ser da mesma aba que você conectou.</p><canvas id="crop-canvas" aria-label="Imagem da aba: arraste para selecionar o relógio"></canvas><p id="crop-description" role="status">Nenhuma região selecionada.</p><div id="crop-options" class="crop-options" hidden></div><div class="dialog-actions"><button id="crop-full" class="button secondary">Usar imagem inteira</button><button id="crop-save" class="button primary" disabled>Usar este relógio</button></div></dialog>
+  <dialog id="crop-dialog"><div class="dialog-header"><div><p class="eyebrow" data-i18n="crop.eyebrow"></p><h2 data-i18n="crop.title"></h2></div><button id="crop-close" class="button small" data-i18n-aria-label="crop.cancel">✕</button></div><p data-i18n="crop.hint"></p><canvas id="crop-canvas" data-i18n-aria-label="crop.canvas"></canvas><p id="crop-description" role="status" data-i18n="crop.none"></p><div id="crop-options" class="crop-options" hidden></div><div class="dialog-actions"><button id="crop-full" class="button secondary" data-i18n="crop.full"></button><button id="crop-save" class="button primary" disabled data-i18n="crop.save"></button></div></dialog>
   <script src="vendor/tesseract/tesseract.min.js"></script>
   <script type="module" src="panel.js"></script>
 </body>

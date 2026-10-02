@@ -1,0 +1,11 @@
+{
+  "extName": {
+    "message": "SyncVideo: Sincronize Reacts e Lives com o Jogo"
+  },
+  "extDescription": {
+    "message": "Deixe o react ou a live no mesmo tempo do jogo, filme ou série que você assiste. Lê os relógios da tela, no seu PC."
+  },
+  "actionTitle": {
+    "message": "Abrir o SyncVideo"
+  }
+}

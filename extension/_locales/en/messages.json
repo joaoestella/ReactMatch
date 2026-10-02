@@ -1,0 +1,11 @@
+{
+  "extName": {
+    "message": "SyncVideo: Sync Reactions and Lives with Any Video"
+  },
+  "extDescription": {
+    "message": "Keep a reaction or live in sync with the game, movie or series you watch. Reads the on-screen clocks, on your device."
+  },
+  "actionTitle": {
+    "message": "Open SyncVideo"
+  }
+}

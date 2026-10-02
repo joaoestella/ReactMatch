@@ -27,7 +27,7 @@ export function insideRanges(target, ranges) {
 
 export function clockTarget(referenceClock, followerClock, followerPosition, direction = 1, trim = 0) {
   if (![referenceClock, followerClock, followerPosition, trim].every(Number.isFinite) || ![1, -1].includes(direction)) {
-    throw new Error('Tempos inválidos.');
+    throw new Error('Invalid times.');
   }
   return followerPosition + (referenceClock - followerClock) * direction + trim;
 }
@@ -37,24 +37,24 @@ export function clockTarget(referenceClock, followerClock, followerPosition, dir
 // difference and resuming lines them up, as long as the player keeps its
 // buffer while paused. `canHold` turns that off per side.
 export function decideCorrection({ target, follower, reference, tolerance = 0.85, maxSeek = Infinity, lastSeek = -Infinity, now = performance.now(), canHold = { reference: true, follower: true }, maxHold = 180 }) {
-  if (!Number.isFinite(target)) return { action: 'wait', reason: 'Referência ainda não definida.' };
-  if (reference.ad || follower.ad) return { action: 'wait', reason: 'Anúncio detectado. Recalibre após o anúncio.' };
-  if (reference.ended || follower.ended) return { action: 'wait', reason: 'Um dos vídeos terminou.' };
+  if (!Number.isFinite(target)) return { action: 'wait', reason: 'noAnchor' };
+  if (reference.ad || follower.ad) return { action: 'wait', reason: 'ad' };
+  if (reference.ended || follower.ended) return { action: 'wait', reason: 'ended' };
   if (reference.ready < 3 || follower.ready < 3 || reference.seeking || follower.seeking) {
-    return { action: 'wait', reason: 'Aguardando o vídeo carregar.' };
+    return { action: 'wait', reason: 'loading' };
   }
-  if (Math.abs(reference.rate - follower.rate) > 0.01) return { action: 'wait', reason: 'Use a mesma velocidade nos dois vídeos.' };
+  if (Math.abs(reference.rate - follower.rate) > 0.01) return { action: 'wait', reason: 'speed' };
   const error = target - follower.time;
   if (Math.abs(error) <= tolerance) return { action: 'aligned', error };
-  if (Math.abs(error) > maxSeek) return { action: 'wait', error, reason: 'Diferença acima de 30s. Pause, confira os relógios e aplique os tempos manualmente.' };
-  if (now - lastSeek < 3000) return { action: 'wait', error, reason: 'Conferindo o último ajuste…' };
+  if (Math.abs(error) > maxSeek) return { action: 'wait', error, reason: 'tooFar' };
+  if (now - lastSeek < 3000) return { action: 'wait', error, reason: 'checking' };
   if (!insideRanges(target, follower.ranges)) {
     // error < 0: B is ahead and must wait. error > 0: B can't jump ahead, so A waits.
     const role = error < 0 ? 'follower' : 'reference';
     if (canHold[role] && Math.abs(error) <= maxHold && !(role === 'reference' ? reference : follower).paused) {
       return { action: 'hold', role, seconds: Math.abs(error), error };
     }
-    return { action: 'unavailable', error, reason: 'Esse momento não está disponível para voltar ou avançar neste player.' };
+    return { action: 'unavailable', error, reason: 'unavailable' };
   }
   return { action: 'seek', target, error };
 }
@@ -161,24 +161,24 @@ export class ClockTracker {
       // against the clock; only readings that disagree start over.
       this.unreadable = (this.unreadable || 0) + 1;
       if (this.unreadable >= 3) this.reset();
-      return { valid: false, reason: 'Relógio ilegível. Aguardando uma leitura clara.' };
+      return { valid: false, reason: 'unreadable' };
     }
     this.unreadable = 0;
     const old = this.previous;
     this.previous = { value, at };
-    if (!old) { this.good = 1; return { valid: false, reason: 'Confirmando o relógio…' }; }
+    if (!old) { this.good = 1; return { valid: false, reason: 'confirming' }; }
     const elapsed = (at - old.at) / 1000;
     const moved = (value - old.value) * this.direction;
     if (elapsed <= 0 || elapsed > 8 || Math.abs(moved - elapsed * rate) > 1.4 || moved < 0) {
       this.good = 1;
-      return { valid: false, reason: 'Relógio mudou ou parou. Confirmando a nova referência…' };
+      return { valid: false, reason: 'changed' };
     }
     // Do not infer a ticking clock from a frozen broadcast image.
     if (moved === 0 && elapsed >= 1.4) {
       this.good = 1;
-      return { valid: false, reason: 'Relógio parado. Aguardando avanço…' };
+      return { valid: false, reason: 'frozen' };
     }
     this.good += 1;
-    return { valid: this.good >= 3, reason: this.good >= 3 ? '' : 'Confirmando o relógio…', value };
+    return { valid: this.good >= 3, reason: this.good >= 3 ? '' : 'confirming', value };
   }
 }

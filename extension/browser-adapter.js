@@ -1,11 +1,12 @@
 // Talks to the players of real tabs through media-bridge.js, which is
 // injected into the page and into every embedded frame we have access to.
 
+import { t } from './i18n.js';
+
 const ERRORS = {
-  'player-changed': 'O player mudou. Conecte esta aba novamente.',
-  'play-blocked': 'Clique em reproduzir no próprio vídeo para liberar a reprodução.',
-  'not-seekable': 'O player não disponibiliza esse trecho. Talvez a live não permita voltar.',
-  'unknown-command': 'Comando desconhecido.'
+  'player-changed': 'bridge.playerChanged',
+  'play-blocked': 'bridge.playBlocked',
+  'not-seekable': 'bridge.notSeekable'
 };
 
 export class BrowserAdapter {
@@ -47,7 +48,7 @@ export class BrowserAdapter {
     });
     if (!result?.result?.ok) {
       const code = result?.result?.message;
-      throw new Error(ERRORS[code] || 'Não foi possível acessar o vídeo. Reconecte a aba.');
+      throw new Error(t(ERRORS[code] || 'bridge.failed'));
     }
     return result.result.data;
   }

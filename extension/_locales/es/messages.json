@@ -1,0 +1,11 @@
+{
+  "extName": {
+    "message": "SyncVideo: Sincroniza Reacciones y Directos"
+  },
+  "extDescription": {
+    "message": "Mantén una reacción o un directo al mismo tiempo que el partido, la película o la serie. Lee los relojes, en tu equipo."
+  },
+  "actionTitle": {
+    "message": "Abrir SyncVideo"
+  }
+}
