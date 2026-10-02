@@ -41,7 +41,7 @@ Chrome 116+ (and Chromium browsers such as Edge, Brave and Opera).
 
 The order doesn't matter: whichever video is ahead goes back (or, if its player can't rewind, pauses for the difference). If the reaction still feels a little early or late, use the fine adjustment.
 
-**Keep both videos visible.** Chrome stops drawing videos in background tabs and in fully covered windows, so their clocks can't be read. SyncVideo notices it and tells you which one is hidden.
+**Reaction in the background.** Chrome stops drawing videos in background tabs, so their clocks can't be read. To keep the reaction's tab in the background and the game in front, click the SyncVideo icon once on the reaction's tab (or press **Alt+Shift+S** there): SyncVideo then captures that tab in a tiny, silent stream that keeps it drawing, and goes on reading its clock while its sound keeps playing. Otherwise, keep both videos visible (**⧉ Put side by side**); SyncVideo tells you when one is hidden.
 
 ### The creator's cam over the game
 
@@ -51,6 +51,7 @@ Step **3** puts the creator's cam in a corner of the game, so you can watch the 
 2. Go to the reaction's tab and click the SyncVideo icon once (or press **Alt+Shift+S**). Chrome only lets an extension capture a tab after that.
 3. Click **Show on the game**. Pick a corner and a size, or drag the cam anywhere; it follows the game into fullscreen.
 4. Set the **Game** and **Reaction** volumes. While the cam is shown, the reaction's sound comes through the game's tab.
+5. While watching, the **⋯** button on the cam opens its menu: sync again, both volumes, the corner and the size, and removing the cam. No need to go back to the panel.
 
 The reaction's tab can then go to the background: being captured, Chrome keeps drawing it, so syncing carries on.
 
