@@ -12,7 +12,7 @@ const ERRORS = {
 export class BrowserAdapter {
   async tabs() {
     const tabs = await chrome.tabs.query({});
-    return tabs.filter(tab => /^https?:\/\//.test(tab.url || '')).map(tab => ({ id: tab.id, title: tab.title || tab.url, url: tab.url }));
+    return tabs.filter(tab => /^https?:\/\//.test(tab.url || '')).map(tab => ({ id: tab.id, title: tab.title || tab.url, url: tab.url, audible: !!tab.audible }));
   }
 
   // Returns every video found in the tab (each tagged with its frame) and the

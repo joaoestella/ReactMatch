@@ -1,0 +1,29 @@
+Mira fútbol con la reacción o el directo al mismo segundo del partido.
+
+Abres el partido en una pestaña y la reacción (o el directo de tu streamer favorito) en otra. Cada uno llega con un retraso distinto, y el gol aparece en la reacción antes o después de que lo veas. ReactMatch lo arregla solo: lee el reloj del partido en los dos videos y retiene el que va adelantado hasta que ambos muestran el mismo minuto.
+
+⚽ HECHO PARA EL FÚTBOL
+• Lee el reloj del marcador en el partido y en la reacción, aunque cada uno lo vea en un servicio distinto.
+• El descanso no molesta: la sincronía sigue, sin saltar 45 minutos.
+• ¿El directo va atrasado? Pausa el partido el tiempo exacto y sigue solo.
+
+🎥 LA CÁMARA DE LA REACCIÓN SOBRE EL PARTIDO
+• Activa la cámara y la del streamer aparece en una esquina del partido, incluso en pantalla completa.
+• Elige la esquina, el tamaño y el volumen del partido y de la reacción.
+• El botón ⋯ de la propia cámara sincroniza de nuevo y cambia el sonido y la posición.
+
+👆 FÁCIL
+1. Dale play al partido y a la reacción.
+2. Haz clic en el icono de ReactMatch.
+3. Toca la pestaña del partido, la de la reacción y pulsa Sincronizar.
+
+🖥 FUNCIONA CON UNA SOLA PANTALLA
+Deja la reacción en segundo plano: al sincronizar, su pestaña aparece 2 segundos para leer el reloj y todo vuelve a estar como antes.
+
+🛠 MODO PRO
+Ajuste fino de medio segundo, elección manual del reloj, sincronía por "mismo momento" para videos sin reloj (películas y series) y una demostración.
+
+🔒 PRIVADO
+Sin cuenta, sin servidor, sin analíticas. Las imágenes se leen en la memoria de tu equipo y se descartan al instante. Código abierto: github.com/joaoestella/ReactMatch
+
+En español, portugués e inglés. Chrome 116 o más reciente, con videos que se reproducen en el navegador (YouTube y otros sitios con reproductor).

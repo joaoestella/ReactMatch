@@ -141,7 +141,7 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     const panelUrl = `chrome-extension://${new URL(worker.url()).host}/panel.html`;
     const errors = [];
 
-    async function scenario(gamePath, frameOf, arrange = false, { reactionPath = '/reaction', gameAt = 50, reactionAt = 40 } = {}) {
+    async function scenario(gamePath, frameOf, arrange = false, { reactionPath = '/reaction', gameAt = 50, reactionAt = 40, beforeStart = null } = {}) {
       const panel = await context.newPage();
       panel.on('pageerror', error => errors.push(error.message));
       await panel.goto(panelUrl);
@@ -157,13 +157,18 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
       if (!gamePath.startsWith('/live')) await frame.evaluate(at => { const v = document.getElementById('v'); v.currentTime = at; v.play(); }, gameAt);
       await sleep(800);
       await panel.bringToFront();
-      await panel.locator('#refresh').click();
       const tabs = await panel.evaluate(async () => (await chrome.tabs.query({})).map(tab => [tab.id, tab.url]));
-      const tabOf = suffix => String(tabs.find(tab => tab[1].endsWith(suffix))[0]);
+      // The newest tab with that address (earlier scenarios may have left theirs open).
+      const tabOf = suffix => String(Math.max(...tabs.filter(tab => tab[1].endsWith(suffix)).map(tab => tab[0])));
+      // Each side lists the open tabs (they appear by themselves); one click connects.
       for (const [role, suffix] of [['reference', gamePath], ['follower', reactionPath]]) {
-        await panel.locator(`#${role}-tab`).selectOption(tabOf(suffix));
-        await panel.locator(`#${role}-connect`).click();
-        await panel.waitForFunction(role => document.getElementById(`${role}-connection`).textContent === 'Connected', role);
+        const card = panel.locator(`#${role}-list button[data-tab="${tabOf(suffix)}"]`);
+        for (let i = 0; i < 30 && !(await card.count()); i++) {
+          const more = panel.locator(`#${role}-list .tab-more button`);
+          if (await more.count()) await more.click(); else await sleep(200);
+        }
+        await card.click();
+        await panel.waitForFunction(role => document.getElementById(`${role}-slot`).dataset.filled === 'true', role);
       }
       const waitTitle = (test, timeout = 30000) => panel.waitForFunction(test => document.getElementById('status-title').textContent.startsWith(test), test, { timeout })
         .catch(async error => { throw new Error(`${error.message}\nstatus: ${await panel.locator('#status-title').textContent()} | ${await panel.locator('#status-detail').textContent()}`); });
@@ -176,6 +181,7 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
         const windows = await panel.evaluate(async ids => Promise.all(ids.map(async id => (await chrome.tabs.get(id)).windowId)), [Number(tabOf(gamePath)), Number(tabOf(reactionPath))]);
         assert.notEqual(windows[0], windows[1]);
       }
+      if (beforeStart) await beforeStart({ panel, creator, tabOf });
       // One click: finds both clocks and starts syncing.
       await panel.locator('#start').click();
       return { panel, creator, gamePage, frame, waitTitle, offset, labels, started: Date.now() };
@@ -183,7 +189,7 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
 
     // 1. Embedded player on another site.
     const embedded = await scenario('/game', page => page.frames().find(frame => frame.url().includes('/embed')), true);
-    await embedded.waitTitle('Videos in sync');
+    await embedded.waitTitle('In sync');
     const syncMs = Date.now() - embedded.started;
     const found = await embedded.labels();
     assert.match(found[0], /^Clock 2[5-7]:\d\d · change$/, 'game: the match clock, not "Replay 12:30": ' + found[0]);
@@ -192,7 +198,7 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     assert.ok(Math.abs(synced + 20) < 0.6, `offset after sync ${synced}`);
     await embedded.frame.evaluate(() => { document.getElementById('v').currentTime += 7; });
     await embedded.waitTitle('Adjusting video 1');
-    await embedded.waitTitle('Videos in sync');
+    await embedded.waitTitle('In sync');
     await sleep(3000);
     const recovered = await embedded.offset();
     assert.ok(Math.abs(recovered + 20) < 0.6, `offset after drift ${recovered}`);
@@ -203,7 +209,7 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     const live = await scenario('/live', page => page.mainFrame());
     await live.waitTitle('Holding video 1');
     const holdText = await live.panel.locator('#status-detail').textContent();
-    await live.waitTitle('Videos in sync', 40000);
+    await live.waitTitle('In sync', 40000);
     await sleep(3000);
     const held = await live.offset();
     assert.ok(Math.abs(held + 20) < 0.8, `offset after hold ${held}`);
@@ -216,7 +222,7 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     await jumpy.waitTitle('Holding video 1');
     await jumpy.waitTitle('Video 1 jumps back to live', 40000);
     await jumpy.waitTitle('Adjusting video 2', 30000);
-    await jumpy.waitTitle('Videos in sync', 30000);
+    await jumpy.waitTitle('In sync', 30000);
     await sleep(3000);
     const skipped = await jumpy.offset();
     assert.ok(Math.abs(skipped + 20) < 0.8, `offset after the reaction skipped ahead ${skipped}`);
@@ -225,7 +231,7 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
 
     // 4. The creator's cam over the game, with the reaction's sound mixed in.
     const pipCase = await scenario('/game-top', page => page.mainFrame());
-    await pipCase.waitTitle('Videos in sync');
+    await pipCase.waitTitle('In sync');
     const p = pipCase.panel;
     assert.equal(new URL(await p.evaluate(() => chrome.runtime.getURL(''))).host, extensionId(extension));
     // Clicking the icon on the reaction's tab lets it be read in the background
@@ -233,14 +239,14 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     const reactionTab = await p.evaluate(async () => (await chrome.tabs.query({})).find(tab => tab.url.endsWith('/reaction')).id);
     await worker.evaluate(id => chrome.runtime.sendMessage({ type: 'reactmatch-invoked', tabId: id }), reactionTab);
     await pipCase.waitTitle('Video 2 in the background');
-    await p.locator('#pip-pick').click();
+    // Turning the cam on asks where it is the first time.
+    await p.locator('#pip-toggle').click();
     await p.locator('#crop-dialog').waitFor({ state: 'visible' });
     const canvas = await p.locator('#crop-canvas').boundingBox();
     // The "CREATOR CAM" box of the reaction video: (60, 120) to (480, 540) of 1280x720.
     await p.mouse.move(canvas.x + canvas.width * 60 / 1280, canvas.y + canvas.height * 120 / 720); await p.mouse.down();
     await p.mouse.move(canvas.x + canvas.width * 480 / 1280, canvas.y + canvas.height * 540 / 720); await p.mouse.up();
     await p.locator('#crop-save').click();
-    await p.locator('#pip-toggle').click();
     await pipCase.waitTitle('Cam on the game');
     const gameTab = await p.evaluate(async () => (await chrome.tabs.query({})).find(tab => tab.url.endsWith('/game-top')).id);
     const stats = () => p.evaluate(async id => (await chrome.scripting.executeScript({ target: { tabId: id }, func: () => globalThis.__reactMatchPip?.stats() ?? null }))[0].result, gameTab);
@@ -281,17 +287,18 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     assert.equal(await p.locator('#pip-size').inputValue(), '40');
     assert.equal(await pipCase.gamePage.evaluate(() => document.getElementById('v').volume), 0.8);
     await press('resync');
-    await pipCase.waitTitle('Syncing started');
-    await pipCase.waitTitle('Videos in sync');
+    await pipCase.waitTitle('Syncing');
+    await pipCase.waitTitle('In sync');
     await press('close');
     await pipCase.waitTitle('Cam removed');
     assert.equal(await stats(), null);
     report.pip = { box: shown.box, colour: shown.colour, corners: true, volumes: true, menu: true, background: true };
+    await p.close(); await pipCase.creator.close(); await pipCase.gamePage.close();
 
     // 5. Halftime: the clocks vanish, then come back 45 min apart. The videos
     //    must stay where they are, not jump 45 minutes.
     const half = await scenario('/game-half', page => page.mainFrame(), false, { reactionPath: '/reaction-half', gameAt: 28, reactionAt: 40 });
-    await half.waitTitle('Videos in sync');
+    await half.waitTitle('In sync');
     const beforeBreak = await half.offset();
     assert.ok(Math.abs(beforeBreak + 20) < 0.6, `offset before halftime ${beforeBreak}`);
     await half.waitTitle('Clock stopped or gone', 40000);
@@ -300,6 +307,51 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     const afterBreak = await half.offset();
     assert.ok(Math.abs(afterBreak + 20) < 0.6, `offset after halftime ${afterBreak}`);
     report.halftime = { offsetBefore: +beforeBreak.toFixed(2), offsetAfter: +afterBreak.toFixed(2) };
+    await half.panel.close(); await half.creator.close(); await half.gamePage.close();
+
+    // 6. One screen: the reaction is a background tab in the game's window and
+    //    the icon was never clicked on it. Its clock is read by showing it for a
+    //    moment; after that the timelines keep the two together.
+    const single = await scenario('/game-top', page => page.mainFrame(), false, { beforeStart: async ({ panel, tabOf }) => {
+      await panel.evaluate(async ([game, react]) => {
+        // Like the real panel, in a window of its own beside the browser.
+        await chrome.windows.create({ tabId: (await chrome.tabs.getCurrent()).id, width: 460, height: 900, left: 1140, top: 0 });
+        const g = await chrome.tabs.get(game);
+        await chrome.tabs.move(react, { windowId: g.windowId, index: -1 });
+        await chrome.tabs.update(game, { active: true });
+        // The test browser lets this extension capture any tab; a real one only
+        // after the icon was clicked there, which nobody did here.
+        chrome.tabCapture.getMediaStreamId = () => Promise.reject(new Error('Extension has not been invoked for the current page'));
+        // Playwright keeps every page "visible". Make the reaction report what
+        // a real browser would (hidden while it isn't the active tab), in the
+        // extension's own isolated world, where the player bridge reads it.
+        window.fakeVisibility = setInterval(async () => {
+          const tab = await chrome.tabs.get(react).catch(() => null);
+          if (!tab) return;
+          await chrome.scripting.executeScript({ target: { tabId: react, allFrames: true }, args: [!tab.active], func: hidden => {
+            if (!globalThis.fakeVisibility) {
+              globalThis.fakeVisibility = true;
+              Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (globalThis.hiddenNow ? 'hidden' : 'visible') });
+            }
+            globalThis.hiddenNow = hidden;
+          } }).catch(() => {});
+        }, 100);
+      }, [Number(tabOf('/game-top')), Number(tabOf('/reaction'))]);
+      await sleep(600);
+    } });
+    await single.waitTitle('In sync');
+    const singleSynced = await single.offset();
+    assert.ok(Math.abs(singleSynced + 20) < 0.6, `single screen: offset after sync ${singleSynced}`);
+    const gameActive = await single.panel.evaluate(async () => (await chrome.tabs.query({})).filter(tab => tab.url.endsWith('/game-top')).sort((a, b) => b.id - a.id)[0].active);
+    assert.equal(gameActive, true, 'the game tab is shown again');
+    assert.match(await single.panel.locator('#status-detail').textContent(), /background/);
+    await single.frame.evaluate(() => { document.getElementById('v').currentTime += 7; });
+    await single.waitTitle('Adjusting video 1');
+    await single.waitTitle('In sync');
+    await sleep(3000);
+    const singleRecovered = await single.offset();
+    assert.ok(Math.abs(singleRecovered + 20) < 0.6, `single screen: offset after drift ${singleRecovered}`);
+    report.singleScreen = { offsetAfterSync: +singleSynced.toFixed(2), offsetAfterDrift: +singleRecovered.toFixed(2) };
 
     assert.deepEqual(errors, []);
     report.pageErrors = errors;

@@ -7,7 +7,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const assert = require('node:assert/strict');
 const extension = path.resolve(__dirname, '../extension');
-const shots = path.resolve(__dirname, '../docs/images');
+// Screenshots for a quick look; the store images are made separately (store/README.md).
+const shots = process.env.SHOTS || fs.mkdtempSync(path.join(os.tmpdir(), 'reactmatch-shots-'));
 
 (async () => {
   const context = await chromium.launchPersistentContext(fs.mkdtempSync(path.join(os.tmpdir(), 'reactmatch-smoke-')), {
@@ -24,38 +25,40 @@ const shots = path.resolve(__dirname, '../docs/images');
     await page.goto(`chrome-extension://${id}/panel.html`);
     const title = () => page.locator('#status-title').textContent();
     const waitTitle = text => page.waitForFunction(text => document.getElementById('status-title').textContent === text, text, { timeout: 15000 });
-    await page.waitForFunction(() => document.getElementById('start').textContent === 'Sync now');
+    await page.waitForFunction(() => document.getElementById('start-word').textContent === 'Sync');
     assert.equal(await page.locator('#start').isDisabled(), true);
     fs.mkdirSync(shots, { recursive: true });
     await page.screenshot({ path: path.join(shots, 'panel-en.png'), fullPage: true });
 
-    // Demo: a simulated 14 s difference, recovery from a 6 s drift, fine adjustment.
+    // Demo (in the Pro view): a simulated 14 s difference, recovery from a 6 s drift, fine adjustment.
+    await page.locator('#view button[data-view="pro"]').click();
     await page.locator('details.help > summary').click();
     await page.locator('#demo').click();
     await waitTitle('Try a 14-second difference');
     await page.locator('#apply-times').click();
     await waitTitle('Reference marked');
     await page.locator('#start').click();
-    await waitTitle('Videos in sync');
+    await waitTitle('In sync');
     await page.locator('#simulate-drift').click();
     await waitTitle('Adjusting video 1');
-    await waitTitle('Videos in sync');
+    await waitTitle('In sync');
     await page.locator('#trim-plus').click();
     assert.equal(await page.locator('#trim-value').textContent(), '+0.5 s');
     await page.locator('#start').click();
-    assert.equal(await title(), 'Syncing stopped');
+    assert.equal(await title(), 'Stopped');
     await page.locator('#leave-demo').click();
     assert.equal(await page.locator('#start').isDisabled(), true);
+    await page.locator('#view button[data-view="simple"]').click();
 
     // Language menu: Portuguese and Spanish, saved for next time.
     await page.locator('#lang').selectOption('pt');
-    await page.waitForFunction(() => document.getElementById('arrange').textContent === '⧉ Pôr lado a lado');
+    await page.waitForFunction(() => document.getElementById('arrange').textContent === 'Pôr lado a lado');
     assert.equal(await page.evaluate(() => document.documentElement.lang), 'pt-BR');
     await page.screenshot({ path: path.join(shots, 'panel-pt.png'), fullPage: true });
     await page.locator('#lang').selectOption('es');
-    await page.waitForFunction(() => document.getElementById('arrange').textContent === '⧉ Poner lado a lado');
+    await page.waitForFunction(() => document.getElementById('arrange').textContent === 'Lado a lado');
     await page.reload();
-    await page.waitForFunction(() => document.getElementById('arrange').textContent === '⧉ Poner lado a lado');
+    await page.waitForFunction(() => document.getElementById('arrange').textContent === 'Lado a lado');
     await page.locator('#lang').selectOption('en');
 
     // The bundled OCR, under the extension's real CSP and without network.

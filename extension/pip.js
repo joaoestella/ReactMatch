@@ -121,17 +121,26 @@
       .map(corner => el('button', { type: 'button', 'data-corner': corner, title: labels[corner], 'aria-label': labels[corner] }, [icon(corner)]));
     const menu = el('div', { class: 'menu', role: 'dialog', 'aria-label': labels.menu, hidden: '' }, [
       el('div', { class: 'status' }, [dot, statusText]),
-      el('button', { class: 'action', type: 'button', 'data-action': 'resync' }, [icon('resync'), labels.resync]),
+      el('button', { class: 'action', type: 'button', 'data-action': 'resync' }, [icon('resync'), el('span', { 'data-label': 'resync' }, [labels.resync || ''])]),
       clockChoice,
       el('div', { class: 'row', title: labels.game }, [icon('game'), gameRange, gameOut]),
       el('div', { class: 'row', title: labels.react }, [icon('react'), reactRange, reactOut]),
-      el('div', { class: 'row' }, [el('span', { class: 'label' }, [labels.position]), el('div', { class: 'corners' }, corners)]),
+      el('div', { class: 'row' }, [el('span', { class: 'label', 'data-label': 'position' }, [labels.position || '']), el('div', { class: 'corners' }, corners)]),
       el('div', { class: 'row', title: labels.size }, [icon('size'), sizeRange, sizeOut]),
-      el('button', { class: 'action quiet', type: 'button', 'data-action': 'close' }, [icon('close'), labels.close])
+      el('button', { class: 'action quiet', type: 'button', 'data-action': 'close' }, [icon('close'), el('span', { 'data-label': 'close' }, [labels.close || ''])])
     ]);
     shadow.append(el('style', {}, [CSS]), box, menu);
     document.documentElement.append(host);
-    return { host, box, canvas, open, menu, dot, statusText, clockChoice, gameRange, reactRange, sizeRange, gameOut, reactOut, sizeOut, corners };
+    const ui = { host, box, canvas, open, menu, dot, statusText, clockChoice, gameRange, reactRange, sizeRange, gameOut, reactOut, sizeOut, corners, shadow };
+    return ui;
+  }
+
+  // New texts when the panel's language changes.
+  function relabel(ui, labels) {
+    for (const node of ui.shadow.querySelectorAll('[data-label]')) node.textContent = labels[node.dataset.label] || '';
+    for (const node of [ui.open, ui.menu]) { node.title = labels.menu; node.setAttribute('aria-label', labels.menu); }
+    for (const [node, name] of [[ui.gameRange, 'game'], [ui.reactRange, 'react'], [ui.sizeRange, 'size']]) { node.setAttribute('aria-label', labels[name]); node.parentElement.title = labels[name]; }
+    for (const button of ui.corners) { button.title = labels[button.dataset.corner]; button.setAttribute('aria-label', labels[button.dataset.corner]); }
   }
 
   function show(host) {
@@ -278,6 +287,7 @@
     if (Number.isFinite(options.volume)) { pip.volumes.react = options.volume; pip.gain.gain.value = options.volume; }
     if (Number.isFinite(options.mainVolume)) pip.volumes.main = options.mainVolume;
     if (options.status) pip.status = options.status;
+    if (options.labels) relabel(pip.ui, options.labels);
     if ('action' in options) {
       pip.ui.clockChoice.hidden = !options.action;
       pip.ui.clockChoice.textContent = options.action || '';

@@ -1,9 +1,9 @@
 {
   "extName": {
-    "message": "ReactMatch: Sincroniza Reacciones y Directos"
+    "message": "ReactMatch: Reacciones y Directos al Ritmo del Fútbol"
   },
   "extDescription": {
-    "message": "Mira una reacción o un directo a la par del partido, película o serie, con la cámara del creador encima. Lee los relojes en tu PC."
+    "message": "Mira fútbol con la reacción o el directo al mismo segundo del partido y la cámara del streamer en una esquina. Todo en tu equipo."
   },
   "actionTitle": {
     "message": "Abrir ReactMatch"

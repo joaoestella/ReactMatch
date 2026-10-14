@@ -5,60 +5,105 @@
   <title>ReactMatch</title>
   <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="simple-view">
   <header class="top">
-    <div class="brand"><span class="brand-icon" aria-hidden="true">⇄</span><span>React<b>Match</b></span></div>
-    <label class="lang" data-i18n-title="lang.label"><span aria-hidden="true">🌐</span><select id="lang" data-i18n-aria-label="lang.label"></select></label>
+    <div class="brand"><img class="brand-icon" src="icons/icon-48.png" alt="" width="28" height="28"><span>React<b>Match</b></span></div>
+    <div id="view" class="view-switch" role="radiogroup" data-i18n-aria-label="view.label">
+      <button role="radio" data-view="simple" data-i18n="view.simple"></button>
+      <button role="radio" data-view="pro" data-i18n="view.pro"></button>
+    </div>
+    <label class="lang" data-i18n-title="lang.label"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg><span id="lang-code">EN</span><select id="lang" data-i18n-aria-label="lang.label"></select></label>
   </header>
 
   <main>
     <div id="demo-banner" class="notice" hidden><span data-i18n="demo.banner"></span> <button id="leave-demo" class="link" data-i18n="demo.leave"></button></div>
 
-    <section class="step" aria-labelledby="step1">
-      <h2 id="step1"><span class="num">1</span> <span data-i18n="step.videos"></span></h2>
-      <article class="source" data-role="reference">
-        <div class="source-head"><span class="badge">1</span><div><h3 data-i18n="a.title"></h3><p data-i18n="a.sub"></p></div><span class="connection" id="reference-connection" data-i18n="conn.none"></span></div>
-        <div class="row"><select id="reference-tab" data-i18n-aria-label="a.title"><option value="" data-i18n="tabs.pick"></option></select><button id="reference-connect" class="button" data-i18n="tab.connect"></button></div>
+    <section class="intro">
+      <h1 data-i18n="hero.title"></h1>
+      <p data-i18n="hero.sub"></p>
+    </section>
+
+    <!-- 1 and 2: pick the two tabs. Clicking a tab connects it right away. -->
+    <section class="slots" aria-labelledby="step1">
+      <h2 id="step1" class="sr-only" data-i18n="step.videos"></h2>
+      <article class="slot" id="reference-slot" data-role="reference" data-filled="false">
+        <div class="slot-head">
+          <span class="slot-num"><span>1</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+          <div class="slot-text">
+            <h3 data-i18n="slot.game"></h3>
+            <p class="slot-hint" data-i18n="slot.gameHint"></p>
+            <p class="slot-chosen"><span class="site" id="reference-site"></span><span class="chosen-title" id="reference-title"></span></p>
+          </div>
+          <span class="clock-pill" id="reference-time">—:—</span>
+          <button class="change" id="reference-change" data-i18n="slot.change"></button>
+        </div>
+        <ul class="tab-list" id="reference-list"></ul>
+        <!-- Kept for the logic and the Pro view: the raw tab menu and connect button. -->
+        <div class="row pro-only raw"><select id="reference-tab" data-i18n-aria-label="slot.game"><option value="" data-i18n="tabs.pick"></option></select><button id="reference-connect" class="button" data-i18n="tab.connect"></button></div>
         <select id="reference-player" class="player-select" hidden data-i18n-aria-label="player.found"></select>
         <button id="reference-allow" class="button allow" hidden></button>
-        <div class="source-foot"><span class="time" id="reference-time">—:—</span><span id="reference-info" class="muted" data-i18n="a.info"></span><button id="reference-capture" class="link" disabled data-i18n="clock.select"></button></div>
+        <div class="source-foot pro-only"><span id="reference-connection" class="connection" data-i18n="conn.none"></span><span id="reference-info" class="muted" data-i18n="a.info"></span><button id="reference-capture" class="link" disabled data-i18n="clock.select"></button></div>
       </article>
-      <article class="source" data-role="follower">
-        <div class="source-head"><span class="badge two">2</span><div><h3 data-i18n="b.title"></h3><p data-i18n="b.sub"></p></div><span class="connection" id="follower-connection" data-i18n="conn.none"></span></div>
-        <div class="row"><select id="follower-tab" data-i18n-aria-label="b.title"><option value="" data-i18n="tabs.pick"></option></select><button id="follower-connect" class="button" data-i18n="tab.connect"></button></div>
+      <article class="slot two" id="follower-slot" data-role="follower" data-filled="false">
+        <div class="slot-head">
+          <span class="slot-num"><span>2</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+          <div class="slot-text">
+            <h3 data-i18n="slot.react"></h3>
+            <p class="slot-hint" data-i18n="slot.reactHint"></p>
+            <p class="slot-chosen"><span class="site" id="follower-site"></span><span class="chosen-title" id="follower-title"></span></p>
+          </div>
+          <span class="clock-pill" id="follower-time">—:—</span>
+          <button class="change" id="follower-change" data-i18n="slot.change"></button>
+        </div>
+        <ul class="tab-list" id="follower-list"></ul>
+        <div class="row pro-only raw"><select id="follower-tab" data-i18n-aria-label="slot.react"><option value="" data-i18n="tabs.pick"></option></select><button id="follower-connect" class="button" data-i18n="tab.connect"></button></div>
         <select id="follower-player" class="player-select" hidden data-i18n-aria-label="player.found"></select>
         <button id="follower-allow" class="button allow" hidden></button>
-        <div class="source-foot"><span class="time" id="follower-time">—:—</span><span id="follower-info" class="muted" data-i18n="b.info"></span><button id="follower-capture" class="link" disabled data-i18n="clock.select"></button></div>
+        <div class="source-foot pro-only"><span id="follower-connection" class="connection" data-i18n="conn.none"></span><span id="follower-info" class="muted" data-i18n="b.info"></span><button id="follower-capture" class="link" disabled data-i18n="clock.select"></button></div>
       </article>
-      <div class="tools"><button id="arrange" class="button ghost" data-i18n="btn.arrange"></button><button id="refresh" class="link" data-i18n="tools.refresh"></button></div>
-      <p class="hint" data-i18n="tools.hint"></p>
     </section>
 
-    <section class="step" aria-labelledby="step2">
-      <h2 id="step2"><span class="num">2</span> <span data-i18n="step.sync"></span></h2>
-      <div class="status"><span id="status-dot" class="dot"></span><div><strong id="status-title" data-i18n="status.welcome"></strong><p id="status-detail" role="status" aria-live="polite" data-i18n="status.welcome.detail"></p><button id="status-action" class="button small" hidden></button></div></div>
-      <button id="start" class="button primary" disabled data-i18n="start.start"></button>
-      <div class="fine" role="group" data-i18n-aria-label="fine.label"><span data-i18n="fine.title"></span><button id="trim-minus" class="button small" disabled data-i18n-aria-label="fine.minus">− 0.5 s</button><output id="trim-value">0.0 s</output><button id="trim-plus" class="button small" disabled data-i18n-aria-label="fine.plus">+ 0.5 s</button><button id="trim-reset" class="link" disabled data-i18n="fine.reset"></button></div>
-      <p class="hint" data-i18n="fine.sub"></p>
-    </section>
-
-    <section class="step" aria-labelledby="step3">
-      <h2 id="step3"><span class="num">3</span> <span data-i18n="pip.title"></span> <span class="tag" data-i18n="pip.optional"></span></h2>
-      <p class="hint first" data-i18n="pip.hint"></p>
-      <div class="row wrap"><button id="pip-pick" class="button" disabled data-i18n="pip.pick"></button><button id="pip-toggle" class="button accent" disabled data-i18n="pip.show"></button></div>
-      <div class="pip-options">
-        <div class="corners" role="group" data-i18n-aria-label="pip.position"><span data-i18n="pip.position"></span>
-          <button data-corner="top-left" data-i18n-aria-label="pip.topLeft">↖</button><button data-corner="top-right" data-i18n-aria-label="pip.topRight">↗</button><button data-corner="bottom-left" data-i18n-aria-label="pip.bottomLeft">↙</button><button data-corner="bottom-right" aria-pressed="true" data-i18n-aria-label="pip.bottomRight">↘</button>
-        </div>
-        <label class="slider"><span data-i18n="pip.size"></span><input id="pip-size" type="range" min="12" max="50" value="28"><output id="pip-size-value">28%</output></label>
+    <!-- 3: the big button and what is happening. -->
+    <section class="go" id="go" data-state="idle" aria-labelledby="step2">
+      <h2 id="step2" class="sr-only" data-i18n="step.sync"></h2>
+      <div class="go-wrap">
+        <span class="pulse" aria-hidden="true"></span>
+        <svg class="spin" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="47"/></svg>
+        <button id="start" class="go-button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h13l-3-3M20 16H7l3 3"/></svg><span id="start-word" data-i18n="go.start"></span></button>
       </div>
-      <h3 class="sub" data-i18n="audio.title"></h3>
-      <label class="slider"><span data-i18n="audio.main"></span><input id="vol-main" type="range" min="0" max="100" value="100" disabled><output id="vol-main-value">100%</output></label>
-      <label class="slider"><span data-i18n="audio.react"></span><input id="vol-react" type="range" min="0" max="100" value="100" disabled><output id="vol-react-value">100%</output></label>
-      <p class="hint" data-i18n="pip.activeTab"></p>
+      <div class="status" role="status" aria-live="polite">
+        <strong id="status-title"><span id="status-dot" class="dot"></span><span id="status-text" data-i18n="status.welcome"></span></strong>
+        <p id="status-detail" data-i18n="status.welcome.detail"></p>
+        <button id="status-action" class="button small" hidden></button>
+      </div>
+      <div class="go-tools">
+        <button id="arrange" class="chip-button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/></svg><span data-i18n="btn.arrange"></span></button>
+        <button id="refresh" class="chip-button pro-only"><span data-i18n="tools.refresh"></span></button>
+      </div>
+      <div class="fine pro-only" role="group" data-i18n-aria-label="fine.label"><span data-i18n="fine.title"></span><button id="trim-minus" class="button small" disabled data-i18n-aria-label="fine.minus">− 0.5 s</button><output id="trim-value">0.0 s</output><button id="trim-plus" class="button small" disabled data-i18n-aria-label="fine.plus">+ 0.5 s</button><button id="trim-reset" class="link" disabled data-i18n="fine.reset"></button></div>
+      <p class="hint pro-only" data-i18n="tools.hint"></p>
     </section>
 
-    <details id="advanced" class="step advanced">
+    <!-- 4: the creator's cam over the game. -->
+    <section class="cam" id="cam" data-on="false" aria-labelledby="step3">
+      <div class="cam-head">
+        <span class="cam-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><rect x="12" y="11" width="7" height="6" rx="1.2"/></svg></span>
+        <div><h2 id="step3" data-i18n="cam.title"></h2><p data-i18n="cam.sub"></p></div>
+        <button id="pip-toggle" class="switch" role="switch" aria-checked="false" aria-pressed="false" disabled data-i18n-aria-label="cam.title"><i></i></button>
+      </div>
+      <div class="cam-body">
+        <div class="corners" role="group" data-i18n-aria-label="pip.position"><span data-i18n="pip.position"></span>
+          <button data-corner="top-left" data-i18n-aria-label="pip.topLeft"><i></i></button><button data-corner="top-right" data-i18n-aria-label="pip.topRight"><i></i></button><button data-corner="bottom-left" data-i18n-aria-label="pip.bottomLeft"><i></i></button><button data-corner="bottom-right" aria-pressed="true" data-i18n-aria-label="pip.bottomRight"><i></i></button>
+        </div>
+        <label class="slider"><span data-i18n="audio.main"></span><input id="vol-main" type="range" min="0" max="100" value="100" disabled><output id="vol-main-value">100%</output></label>
+        <label class="slider"><span data-i18n="audio.react"></span><input id="vol-react" type="range" min="0" max="100" value="100" disabled><output id="vol-react-value">100%</output></label>
+        <label class="slider pro-only"><span data-i18n="pip.size"></span><input id="pip-size" type="range" min="12" max="50" value="28"><output id="pip-size-value">28%</output></label>
+        <button id="pip-pick" class="link" disabled data-i18n="pip.pick"></button>
+        <p class="hint pro-only" data-i18n="pip.activeTab"></p>
+      </div>
+    </section>
+
+    <details id="advanced" class="card advanced pro-only">
       <summary data-i18n="adv.summary"></summary>
       <h3 data-i18n="adv.moment.title"></h3>
       <p class="hint" data-i18n="help.timeline"></p>
@@ -70,7 +115,7 @@
       <p id="anchor-label" class="hint" data-i18n="anchor.none"></p>
     </details>
 
-    <details class="step help">
+    <details class="card help pro-only">
       <summary data-i18n="help.summary"></summary>
       <p data-i18n="help.p1"></p><p data-i18n="help.p2"></p><p data-i18n="help.p3"></p><p data-i18n="help.p4"></p>
       <button id="demo" class="button ghost"><span id="demo-label" data-i18n="demo.try"></span></button>
@@ -78,7 +123,7 @@
     </details>
   </main>
 
-  <footer><span data-i18n="top.local"></span> · <a href="https://joaoestella.github.io/ReactMatch/" target="_blank" rel="noopener" data-i18n="privacy.link"></a> · <span id="version"></span></footer>
+  <footer><span class="local"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span data-i18n="top.local"></span></span> · <a href="https://joaoestella.github.io/ReactMatch/" target="_blank" rel="noopener" data-i18n="privacy.link"></a> · <span id="version"></span></footer>
 
   <dialog id="crop-dialog"><div class="dialog-header"><div><p class="eyebrow" data-i18n="crop.eyebrow"></p><h2 id="crop-title" data-i18n="crop.title"></h2></div><button id="crop-close" class="button small" data-i18n-aria-label="crop.cancel">✕</button></div><p class="hint" data-i18n="crop.hint"></p><canvas id="crop-canvas" data-i18n-aria-label="crop.canvas"></canvas><p id="crop-description" role="status" data-i18n="crop.none"></p><div id="crop-options" class="crop-options" hidden></div><div class="dialog-actions"><button id="crop-full" class="button" data-i18n="crop.full"></button><button id="crop-save" class="button primary" disabled data-i18n="crop.save"></button></div></dialog>
   <script src="vendor/tesseract/tesseract.min.js"></script>

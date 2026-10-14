@@ -1,8 +1,8 @@
-# ReactMatch ⇄
+# ReactMatch
 
-A Chrome extension that **keeps a reaction or a live in sync with the game, movie or series you are watching**, even when each of you watches through a different service.
+A Chrome extension that **keeps a reaction or a live in sync with the football game (or movie, or series) you are watching**, with the streamer's cam in a corner of the game, even when each of you watches through a different service.
 
-![ReactMatch panel](docs/images/panel-en.png)
+![ReactMatch: the reaction cam over the game, in sync](store/screenshots/en/screenshot-1-hero.png)
 
 You open the game in one tab and the creator's live in another. The creator shows the match clock on screen; your game also shows it. ReactMatch finds both clocks, reads them and moves your game (or pauses it) so both show the same minute. It keeps checking while you watch.
 
@@ -14,8 +14,10 @@ It doesn't matter if the creator watches on one service and you on another: what
 - **Reads the players directly:** frames come straight from the `<video>` element, so there's no screen-sharing dialog. Players embedded from another site (iframes) work too, after you allow that site. DRM-protected players fall back to a tab capture.
 - **Precise, and calm about it:** each frame carries the player position it was taken at, and several readings are averaged (the clocks only show whole seconds). A blurry frame is skipped; when the clocks change for good (halftime, a reset), it syncs again from the new ones.
 - **Either side can be adjusted:** the video that is ahead goes back. If its player can't rewind (a live), it pauses for exactly the difference and resumes; if it even jumps back to live when resumed, the other video skips ahead instead.
-- **One click:** "Sync now" finds the clocks and uses the frames it looked at as the first estimate, so syncing starts in seconds.
-- **Keeps both videos visible:** "Put side by side" gives each video its own window and docks the panel on the right; a hidden or covered video is detected.
+- **Simple and Pro:** Simple is two taps on your tabs and one big Sync button; Pro adds the players, the clocks, fine adjustment, manual calibration and the demo.
+- **One screen is enough:** leave the reaction in a background tab. When syncing, ReactMatch shows that tab for a moment to read its clock, then puts everything back; after that the videos' own timelines keep them together.
+- **One click:** "Sync" finds the clocks and uses the frames it looked at as the first estimate, so syncing starts in seconds.
+- **Side by side (optional):** gives each video its own window and docks the panel on the right, so both clocks stay readable all the time.
 - **Same moment,** for videos without a clock: pause both on the same scene and mark it.
 - **Fine adjustment** in half-second steps, and a **demo** with simulated clocks.
 - **The creator's cam on the game:** pick the cam's area in the reaction and it appears over the game, in the corner you choose or wherever you drag it, also in fullscreen. Each video has its own volume.
@@ -35,27 +37,26 @@ Chrome 116+ (and Chromium browsers such as Edge, Brave and Opera).
 
 1. Open the game and the reaction (or live) in Chrome and press play on both.
 2. Click the ReactMatch icon. The panel opens as a narrow window on the right.
-3. Choose the game as **1** and the reaction as **2**, and click **Connect** on each. Chrome asks for access to each site.
-4. Click **⧉ Put side by side** so each video has its own window and both are visible.
-5. Click **Sync now**. It finds both clocks and starts syncing, usually in a few seconds.
+3. Under **1 · Game or movie**, tap the game's tab; under **2 · React or live**, tap the reaction's tab. Chrome asks for access to each site the first time.
+4. Tap the big **Sync** button. It finds both clocks and starts syncing, usually in a few seconds.
 
 The order doesn't matter: whichever video is ahead goes back (or, if its player can't rewind, pauses for the difference). If the reaction still feels a little early or late, use the fine adjustment.
 
-**Reaction in the background.** Chrome stops drawing videos in background tabs, so their clocks can't be read. To keep the reaction's tab in the background and the game in front, click the ReactMatch icon once on the reaction's tab (or press **Alt+Shift+S** there): ReactMatch then captures that tab in a tiny, silent stream that keeps it drawing, and goes on reading its clock while its sound keeps playing. Otherwise, keep both videos visible (**⧉ Put side by side**); ReactMatch tells you when one is hidden.
+**Reaction in the background (one screen).** Chrome stops drawing videos in background tabs, so their clocks can't be read there. When you sync, ReactMatch shows the background tab for about two seconds to read its clock and then brings back the tab you were on. From then on the two videos are kept together by their own timelines; tap **Sync again** if the creator pauses or rewinds their game. To keep reading both clocks all the time, turn on the cam on the game (the reaction is then captured and keeps drawing), click the ReactMatch icon once on the reaction's tab (or press **Alt+Shift+S** there), or use **Side by side**.
 
 ### The creator's cam over the game
 
-Step **3** puts the creator's cam in a corner of the game, so you can watch the game full size and still see the reaction:
+**Reaction cam on the game** puts the creator's cam in a corner of the game, so you can watch the game full size and still see the reaction:
 
-1. **Choose the cam**: draw a box around the creator's camera in video 2.
-2. Go to the reaction's tab and click the ReactMatch icon once (or press **Alt+Shift+S**). Chrome only lets an extension capture a tab after that.
-3. Click **Show on the game**. Pick a corner and a size, or drag the cam anywhere; it follows the game into fullscreen.
+1. Turn the switch on and draw a box around the creator's camera in video 2 (or use the whole picture).
+2. The first time, Chrome asks for one click: go to the reaction's tab and click the ReactMatch icon (or press **Alt+Shift+S**). The cam then appears by itself.
+3. Pick a corner, or drag the cam anywhere; it follows the game into fullscreen.
 4. Set the **Game** and **Reaction** volumes. While the cam is shown, the reaction's sound comes through the game's tab.
 5. While watching, the **⋯** button on the cam opens its menu: sync again, both volumes, the corner and the size, and removing the cam. No need to go back to the panel.
 
 The reaction's tab can then go to the background: being captured, Chrome keeps drawing it, so syncing carries on.
 
-For content without a clock, open **No clock on screen, or the wrong one?**: pause both on the same scene and click **Mark same moment**, or type what each clock shows.
+For content without a clock, switch to **Pro** and open **No clock on screen, or the wrong one?**: pause both on the same scene and click **Mark same moment**, or type what each clock shows.
 
 ## Limits
 

@@ -14,7 +14,8 @@ const sideName = role => role === 'reference' ? '1' : '2';
 const installed = !!globalThis.chrome?.scripting;
 let adapter = new BrowserAdapter(), demo = false;
 let sources = {}, captures = {}, tabList = [], anchor = null, trim = 0, missing = {};
-let running = false, busy = false, revision = 0, lastSeek = -Infinity, lastOCR = 0;
+let background = null;
+let running = false, working = false, busy = false, revision = 0, lastSeek = -Infinity, lastOCR = 0;
 let sourceKeys = null, currentKind = 'timeline', lastPaused = null;
 // First offset estimates, from the frames used to find the clocks.
 let seeds = [];
@@ -45,7 +46,7 @@ const number = value => new Intl.NumberFormat(getLocale(), { minimumFractionDigi
 const seconds = value => `${value > 0.05 ? '+' : ''}${number(Math.abs(value) < 0.05 ? 0 : value)} s`;
 
 function status(title, detail, type = '') {
-  $('status-title').textContent = title; $('status-detail').textContent = detail;
+  $('status-text').textContent = title; $('status-detail').textContent = detail;
   $('status-dot').className = `dot ${type}`;
   // The cam's menu shows the same line, so the panel can stay hidden.
   const line = `${title}${detail ? ` · ${detail}` : ''}`;
@@ -70,7 +71,10 @@ function updateControls() {
   const connected = both();
   for (const id of ['pause-both', 'mark-moment', 'apply-times', 'trim-minus', 'trim-plus', 'trim-reset']) $(id).disabled = !connected;
   $('start').disabled = !connected;
-  $('start').textContent = running ? t('start.stop') : t('start.start');
+  $('start-word').textContent = running ? t('go.stop') : t('go.start');
+  $('start').setAttribute('aria-label', running ? t('start.stop') : t('start.start'));
+  $('go').dataset.state = working ? 'working' : running ? 'running' : connected ? 'ready' : 'idle';
+  $('arrange').disabled = !connected;
   $('read-clocks').disabled = !hasOCR() || demo;
   $('clear-captures').hidden = !Object.keys(captures).length;
   $('trim-value').textContent = seconds(trim);
@@ -80,8 +84,10 @@ function updateControls() {
   $('pip-pick').disabled = !sources.follower || demo;
   $('pip-pick').textContent = cam.region ? t('pip.picked') : t('pip.pick');
   $('pip-toggle').disabled = !connected || demo;
-  $('pip-toggle').textContent = cam.on ? t('pip.hide') : t('pip.show');
+  $('pip-toggle').setAttribute('aria-checked', String(cam.on));
   $('pip-toggle').setAttribute('aria-pressed', String(cam.on));
+  $('cam').dataset.on = String(cam.on);
+  for (const role of roles) renderSlot(role);
   $('vol-main').disabled = !sources.reference || demo;
   $('vol-react').disabled = !sources.follower || demo;
   for (const button of document.querySelectorAll('[data-corner]')) button.setAttribute('aria-pressed', String(button.dataset.corner === cam.corner));
@@ -119,6 +125,7 @@ async function refreshTabs() {
     select.replaceChildren(new Option(tabList.length ? t('tabs.pick') : t('tabs.none'), ''));
     for (const tab of tabList) select.add(new Option(tab.title, String(tab.id)));
     select.value = selected;
+    renderList(role);
   }
   if (!installed && !demo) status(t('status.tryDemo'), t('status.tryDemo.detail'));
 }
@@ -127,9 +134,113 @@ const host = origin => new URL(origin).hostname;
 const sameVideo = (a, b) => a && b && a.tabId === b.tabId && a.frameId === b.frameId && a.videoId === b.videoId;
 
 function showMissing(role) {
-  const list = missing[role] || [];
+  // Embedded players are only worth asking about when no video was found.
+  const list = sources[role] ? [] : missing[role] || [];
   $(role + '-allow').hidden = !list.length;
   $(role + '-allow').textContent = t('allow.button', { sites: list.map(host).join(', ') });
+}
+
+// Forgets the video connected on one side (a new tab was picked, or "Change").
+function release(role) {
+  stop(false); clearAnchor();
+  if (cam.on) hideCam(false).catch(() => {});
+  stopDrawing(role);
+  if (role === 'follower') cam.region = null;
+  delete sources[role]; missing[role] = []; showMissing(role);
+  dropCapture(role);
+  $(role + '-connection').textContent = t('conn.none'); $(role + '-connection').classList.remove('connected');
+  $(role + '-player').hidden = true;
+  $(role + '-time').textContent = '—:—';
+  updateControls();
+}
+
+// A small colored badge with the site's initial (favicons would need another permission).
+const SITES = { youtube: ['▶', '#ff0033'], twitch: ['T', '#9146ff'], kick: ['K', '#2fb80f'], globo: ['g', '#e3261c'], ge: ['g', '#06aa48'], cazetv: ['C', '#111'],
+  facebook: ['f', '#1877f2'], instagram: ['I', '#d62976'], tiktok: ['♪', '#111'], x: ['X', '#111'], twitter: ['X', '#111'], netflix: ['N', '#e50914'],
+  primevideo: ['P', '#00a8e1'], amazon: ['P', '#00a8e1'], disneyplus: ['D', '#113ccf'], max: ['M', '#002be7'], hbomax: ['M', '#002be7'], dazn: ['D', '#111'], espn: ['E', '#d00'], star: ['S', '#c724b1'] };
+function siteOf(url) {
+  let host = '';
+  try { host = new URL(url).hostname.replace(/^www\.|^m\./, ''); } catch { /* demo */ }
+  const parts = host.split('.');
+  const key = parts.find(part => SITES[part]) || parts[0] || '';
+  const [glyph, color] = SITES[key] || [(key[0] || '•').toUpperCase(), `hsl(${[...key].reduce((h, c) => h + c.charCodeAt(0) * 37, 0) % 360} 45% 38%)`];
+  return { host, glyph, color };
+}
+function paintSite(el, url) {
+  const { glyph, color } = siteOf(url);
+  el.textContent = glyph; el.style.setProperty('--site', color);
+}
+
+function renderSlot(role) {
+  const slot = $(role + '-slot');
+  const tab = sources[role] && tabList.find(item => item.id === sources[role].tabId);
+  slot.dataset.filled = String(!!sources[role]);
+  if (!sources[role]) return;
+  $(role + '-title').textContent = tab?.title || '';
+  $(role + '-title').title = tab?.title || '';
+  paintSite($(role + '-site'), tab?.url || '');
+}
+
+// The tabs to pick from, most likely first: playing sound, then (for the
+// reaction) titles that look like a react or a live.
+const REACT_WORDS = /react|reage|reacc|watch ?along|resenha|assistindo junto|com a galera/i;
+const VIDEO_PLACES = /youtube|youtu\.be|twitch|kick\.com|globo|cazetv|dazn|espn|hbomax|max\.com|primevideo|netflix|disneyplus|star\.|tiktok|facebook\.com\/watch/i;
+const VIDEO_WORDS = /\b(ao vivo|live|en vivo|directo|vs\.?|x|jogo|partida|match|game|final)\b/i;
+const listOpen = { reference: false, follower: false };
+function renderList(role) {
+  const list = $(role + '-list');
+  const taken = sources[other(role)]?.tabId;
+  const score = tab => (tab.audible ? 2 : 0) + (VIDEO_PLACES.test(tab.url) || VIDEO_WORDS.test(tab.title) ? 1 : 0)
+    + (REACT_WORDS.test(tab.title) ? (role === 'follower' ? 2 : -2) : 0);
+  const tabs = tabList.filter(tab => tab.id !== taken).sort((a, b) => score(b) - score(a));
+  const shown = listOpen[role] ? tabs : tabs.slice(0, 4);
+  // Rebuild only when something visible changed, so a click isn't lost to a
+  // re-render (pages like YouTube retitle their tabs all the time).
+  const key = [getLang(), tabs.length, ...shown.map(tab => `${tab.id}|${tab.title}|${tab.audible}`)].join('\n');
+  if (list.dataset.key === key) return;
+  list.dataset.key = key;
+  list.replaceChildren();
+  if (!tabs.length) {
+    const empty = document.createElement('li');
+    empty.className = 'tab-empty'; empty.textContent = t('slot.empty');
+    list.append(empty);
+    return;
+  }
+  for (const tab of shown) {
+    const li = document.createElement('li');
+    const button = document.createElement('button');
+    button.className = 'tab-item'; button.dataset.tab = String(tab.id);
+    const site = document.createElement('span'); site.className = 'site'; paintSite(site, tab.url);
+    const text = document.createElement('span'); text.className = 'tab-text';
+    const title = document.createElement('span'); title.className = 'tab-title'; title.textContent = tab.title;
+    const host = document.createElement('span'); host.className = 'tab-host'; host.textContent = siteOf(tab.url).host;
+    text.append(title, host);
+    button.append(site, text);
+    if (tab.audible) {
+      const sound = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      sound.setAttribute('viewBox', '0 0 24 24'); sound.classList.add('sound');
+      for (const d of ['M4 9v6h4l5 4V5L8 9z', 'M16.5 8.5a5 5 0 0 1 0 7']) {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', d); sound.append(path);
+      }
+      button.append(sound);
+    }
+    const go = document.createElement('span'); go.className = 'go-arrow'; go.textContent = t('slot.use');
+    button.append(go);
+    button.addEventListener('click', () => {
+      button.classList.add('busy'); go.textContent = t('slot.connecting');
+      $(role + '-tab').value = String(tab.id);
+      connect(role, tab.id).catch(fail).finally(() => { button.classList.remove('busy'); go.textContent = t('slot.use'); });
+    });
+    li.append(button);
+    list.append(li);
+  }
+  if (tabs.length > shown.length) {
+    const more = document.createElement('li'); more.className = 'tab-more';
+    const button = document.createElement('button'); button.textContent = t('slot.more', { n: tabs.length - shown.length });
+    button.addEventListener('click', () => { listOpen[role] = true; renderList(role); });
+    more.append(button); list.append(more);
+  }
 }
 
 async function connect(role, forcedId) {
@@ -152,11 +263,11 @@ async function connect(role, forcedId) {
   const found = await adapter.connect(tabId);
   if (token !== revision) return;
   missing[role] = found.missing;
-  showMissing(role);
   const available = found.videos
     .map(video => ({ ...video, source: { tabId, frameId: video.frameId, videoId: video.id } }))
     .filter(video => !sameVideo(video.source, sources[other(role)]));
   if (!available.length) {
+    showMissing(role);
     if (found.missing.length) {
       status(t('status.embedded'), t('status.embedded.detail', { sites: found.missing.map(host).join(', '), button: $(role + '-allow').textContent }), 'warning');
       return;
@@ -173,10 +284,12 @@ async function connect(role, forcedId) {
     return option;
   }));
   select.hidden = available.length === 1;
+  showMissing(role);
   $(role + '-connection').textContent = demo ? t('conn.simulated') : t('conn.connected');
   $(role + '-connection').classList.add('connected');
   $(role + '-info').textContent = demo ? t('info.demo') : t('info.connected');
   updateControls();
+  renderList(other(role));
   status(both() ? t('status.bothConnected') : t('status.oneConnected'), both() ? t('status.bothConnected.detail') : t('status.oneConnected.detail'));
 }
 
@@ -207,6 +320,71 @@ function hiddenSide(states) {
 function showHidden(role) {
   status(t('status.hidden', { side: sideName(role) }), t('status.hidden.detail'), 'warning');
   $('arrange').classList.add('attention');
+  offerAction(t('pipmenu.resync'), () => { stop(false); return start(); });
+}
+// One button under the status line, for whatever the status suggests.
+let statusAction = null;
+function offerAction(label, run) {
+  statusAction = run;
+  $('status-action').hidden = !label;
+  $('status-action').textContent = label || '';
+}
+
+// A side whose tab is in the background (or covered) and can't be kept
+// drawing: its clock is read by showing that tab for a moment ("peek").
+async function sideAway(states) {
+  for (const role of roles) {
+    if (!states[role].hidden || captured(role)) continue;
+    if (!(await keepDrawing(role))) return role;
+  }
+  return null;
+}
+
+// Shows a background tab for a couple of seconds so its picture is drawn,
+// runs work() (reading its clock), then puts everything back as it was.
+async function peek(role, work) {
+  const tabId = sources[role].tabId;
+  const tab = await chrome.tabs.get(tabId);
+  const win = await chrome.windows.get(tab.windowId);
+  const [before] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
+  const focused = await chrome.windows.getLastFocused().catch(() => null);
+  status(t('status.peek', { side: sideName(role) }), t('status.peek.detail'), 'active');
+  try {
+    if (win.state === 'minimized') await chrome.windows.update(win.id, { state: 'normal' });
+    await chrome.tabs.update(tabId, { active: true });
+    if (!focused || focused.id !== win.id) await chrome.windows.update(win.id, { focused: true });
+    // Chrome stops decoding hidden videos; wait until the picture moves again.
+    let last = null, changes = 0;
+    for (let i = 0; i < 20 && changes < 2; i++) {
+      await sleep(150);
+      const shot = await adapter.command(sources[role], 'grab', { maxWidth: 320, type: 'image/jpeg' }).catch(() => ({}));
+      if (shot.sig !== undefined && shot.sig !== last) { if (last !== null) changes++; last = shot.sig; }
+    }
+    return await work();
+  } finally {
+    if (before && before.id !== tabId) await chrome.tabs.update(before.id, { active: true }).catch(() => {});
+    if (win.state === 'minimized') await chrome.windows.update(win.id, { state: 'minimized' }).catch(() => {});
+    if (focused && focused.id !== win.id) await chrome.windows.update(focused.id, { focused: true }).catch(() => {});
+  }
+}
+
+// Looks for the clocks of these sides: the visible ones together, then each
+// background one through a quick peek.
+async function look(sides, token) {
+  const states = await pair();
+  const away = [];
+  for (const role of sides) if (states[role].hidden && !captured(role) && !(await keepDrawing(role))) away.push(role);
+  if (sides.some(role => keepAlive[role])) await sleep(600);
+  const near = sides.filter(role => !away.includes(role));
+  const found = {};
+  if (near.length) { const result = await detect(near, token); if (!result) return null; Object.assign(found, result); }
+  // A covered window looks visible but its picture doesn't move: peek too.
+  for (const role of [...away, ...near.filter(role => found[role]?.error === 'hidden')]) {
+    const result = await peek(role, () => detect([role], token));
+    if (!result) return null;
+    found[role] = result[role];
+  }
+  return found;
 }
 
 // Keeps a background tab drawing by capturing it (tiny, video only), so its
@@ -232,14 +410,6 @@ async function keepDrawing(role) {
 function stopDrawing(role) {
   keepAlive[role]?.stream.getTracks().forEach(track => track.stop());
   keepAlive[role] = null;
-}
-// A hidden side is kept drawing when possible; otherwise the user is told how.
-async function handleHidden(states) {
-  const hidden = hiddenSide(states);
-  if (!hidden) return false;
-  if (await keepDrawing(hidden)) return false;
-  showHidden(hidden);
-  return true;
 }
 
 // ---- Reading the clocks ----------------------------------------------------
@@ -294,7 +464,7 @@ async function ocrTick(token, states) {
   if (result.error) { status(t('status.cantRead'), result.error, 'warning'); return; }
   const { readings } = result;
   const stuck = roles.find(role => pictureStuck(role, readings[role]));
-  if (stuck) { if (!(await keepDrawing(stuck))) showHidden(stuck); return; }
+  if (stuck) { if (!(await keepDrawing(stuck))) { if (anchor === null) showHidden(stuck); else background = stuck; } return; }
   // Clocks are checked against the player's own timeline: one second of video
   // must move the clock by one second, whatever the playback speed.
   const checks = roles.map(role => trackers[role].push(readings[role].value, readings[role].time * 1000, readings[role].confidence, 1));
@@ -322,9 +492,9 @@ function showClockChoice(diff) {
   const button = $('status-action');
   if (!button) return;
   const label = diff === null ? null : t('clock.useNew', { s: seconds(diff) });
-  button.hidden = diff === null;
+  if (label) offerAction(label, acceptNewClock);
+  else if (statusAction === acceptNewClock || !statusAction) offerAction(null);
   if (label) {
-    button.textContent = label;
     status(t('status.clockMoved'), t('status.clockMoved.detail', { s: seconds(diff) }), 'warning');
   }
   if (cam.on && label !== cam.actionLabel) {
@@ -360,7 +530,9 @@ async function applyTarget(target, states, token) {
     status(t('status.adjusting', { side: sideName(result.role) }), t('status.adjusting.detail', { s: seconds(moved) }), 'active');
   } else if (result.action === 'aligned') {
     $('arrange').classList.remove('attention');
+    if (statusAction && !lock.pending) offerAction(null);
     if (notice && performance.now() < notice.until) status(notice.title, notice.detail, 'active');
+    else if (background) status(t('status.synced'), t('status.syncedBg.detail', { s: `${number(Math.abs(result.error))} s`, side: sideName(background) }), 'active');
     else status(t('status.synced'), t('status.synced.detail', { s: `${number(Math.abs(result.error))} s` }) + (demo ? ` · ${t('demo.tag')}` : ''), 'active');
   } else if (result.action === 'unavailable' && roles.some(role => !canHold[role])) {
     showJumped(roles.find(role => !canHold[role]));
@@ -438,10 +610,13 @@ async function tick() {
     }
     if (hold) { showHold(); return; }
     if (resumed && checkResume(states)) return;
-    if (ocrMode && await handleHidden(states)) return;
+    // A side in the background can't be read; once the offset is known, the
+    // videos' own timelines keep them together until it can be read again.
+    background = ocrMode ? await sideAway(states) : null;
+    if (background && anchor === null) { showHidden(background); return; }
     await mirrorPauses(states);
     if (token !== revision) return;
-    if (ocrMode) {
+    if (ocrMode && !background) {
       await ocrTick(token, states);
       if (token !== revision || anchor === null) return;
       states = await pair();
@@ -550,8 +725,7 @@ async function selectClock(role) {
   const token = revision;
   status(t('status.findingOne'), t('status.moment'));
   const state = await adapter.command(sources[role], 'snapshot');
-  if (state.hidden) { showHidden(role); return; }
-  const found = state.paused ? null : (await detect([role], token))?.[role];
+  const found = state.paused ? null : (await look([role], token))?.[role];
   if (token !== revision) return;
   if (found?.error === 'hidden') { showHidden(role); return; }
   if (!(await pickOnStill(role, token, found))) { status(t('status.cancelled'), t('status.cancelled.detail')); return; }
@@ -563,20 +737,17 @@ async function selectClock(role) {
 async function findMissingClocks(token) {
   const sides = roles.filter(role => !captures[role]);
   if (!sides.length) return true;
-  const states = await pair();
-  if (await handleHidden(states)) return false;
-  if (roles.some(role => keepAlive[role])) await sleep(600);
   status(t('status.finding'), t('status.finding.detail'), 'active');
   await Promise.all(sides.map(role => adapter.command(sources[role], 'play')));
   await sleep(400);
   if (token !== revision) return false;
-  const found = await detect(sides, token);
+  const found = await look(sides, token);
   if (!found) return false;
   // A side without one clear clock gets a second look before asking the user
   // (a frame caught mid-change or a blurry one is enough to miss it).
   const unclear = sides.filter(role => !found[role].error && !clearChoice(found[role].clocks || []));
   if (unclear.length) {
-    const again = await detect(unclear, token);
+    const again = await look(unclear, token);
     if (!again) return false;
     for (const role of unclear) if (again[role].clocks && clearChoice(again[role].clocks)) found[role] = again[role];
   }
@@ -615,6 +786,8 @@ async function findMissingClocks(token) {
 // (only the missing ones) and start reading them.
 async function start() {
   if (running) { stop(); return; }
+  // A routine check may be running; wait for it instead of refusing the click.
+  for (let i = 0; i < 50 && busy; i++) await sleep(100);
   if (busy) throw new Error(t('error.busyStart'));
   stop(false);
   const token = revision;
@@ -862,18 +1035,8 @@ for (const role of roles) {
     if (!granted) throw new Error(t('error.permissionPlayer'));
     await connect(role, Number($(role + '-tab').value));
   });
-  $(role + '-tab').addEventListener('change', () => {
-    stop(false); clearAnchor();
-    if (cam.on) hideCam(false).catch(() => {});
-    stopDrawing(role);
-    if (role === 'follower') cam.region = null;
-    delete sources[role]; missing[role] = []; showMissing(role);
-    dropCapture(role);
-    $(role + '-connection').textContent = t('conn.none'); $(role + '-connection').classList.remove('connected');
-    $(role + '-player').hidden = true;
-    $(role + '-time').textContent = '—:—';
-    updateControls(); status(t('title.connectSelected'), t('status.connectSelected.detail'));
-  });
+  $(role + '-tab').addEventListener('change', () => { release(role); status(t('title.connectSelected'), t('status.connectSelected.detail')); });
+  listen(role + '-change', () => { release(role); $(role + '-tab').value = ''; renderSlot(role); renderList(role); status(t('status.pickAgain'), t('status.pickAgain.detail')); });
   $(role + '-player').addEventListener('change', () => {
     stop(false); clearAnchor(); clearCaptures();
     sources[role] = JSON.parse($(role + '-player').selectedOptions[0].dataset.source);
@@ -883,7 +1046,7 @@ for (const role of roles) {
 }
 listenCam();
 listen('refresh', refreshTabs);
-listen('status-action', acceptNewClock);
+listen('status-action', () => (statusAction || acceptNewClock)());
 listen('arrange', arrange);
 $('direction').addEventListener('change', () => { stop(false); clearAnchor(); status(t('status.direction'), t('status.direction.detail')); });
 listen('pause-both', async () => {
@@ -892,7 +1055,10 @@ listen('pause-both', async () => {
 });
 listen('mark-moment', markMoment);
 listen('apply-times', applyTimes);
-listen('start', start);
+listen('start', async () => {
+  working = !running; updateControls();
+  try { await start(); } finally { working = false; updateControls(); }
+});
 listen('clear-captures', () => { stop(false); clearCaptures(); resetTrackers(); status(t('status.capturesCleared'), t('status.capturesCleared.detail')); });
 listen('read-clocks', async () => {
   if (busy) throw new Error(t('error.busy'));
@@ -963,7 +1129,28 @@ function refreshDynamic() {
   $('anchor-label').textContent = anchor === null ? t('anchor.none') : t('anchor.set');
   $('demo-label').textContent = demo ? t('demo.restart') : t('demo.try');
   updateControls();
+  for (const role of roles) renderList(role);
 }
+
+function renderLangCode() { $('lang-code').textContent = getLang().toUpperCase(); }
+
+// "Simple" shows the two tabs, the big button and the cam; "Pro" adds the
+// players, clocks, fine adjustment, manual calibration and the demo.
+let view = 'simple';
+function renderView() {
+  document.body.classList.toggle('pro-view', view === 'pro');
+  document.body.classList.toggle('simple-view', view === 'simple');
+  for (const button of document.querySelectorAll('#view button')) button.setAttribute('aria-checked', String(button.dataset.view === view));
+}
+for (const button of document.querySelectorAll('#view button')) button.addEventListener('click', () => {
+  view = button.dataset.view; renderView();
+  try { chrome.storage.local.set({ view }); } catch { /* Preview. */ }
+});
+
+// The tab lists follow what is open, without a refresh button.
+let tabsTimer = null;
+const tabsChanged = () => { clearTimeout(tabsTimer); tabsTimer = setTimeout(() => { if (!demo) refreshTabs().then(() => roles.forEach(renderSlot)).catch(() => {}); }, 300); };
+for (const event of ['onCreated', 'onRemoved', 'onUpdated']) globalThis.chrome?.tabs?.[event]?.addListener(tabsChanged);
 
 async function init() {
   const select = $('lang');
@@ -972,6 +1159,9 @@ async function init() {
   try { saved = (await chrome.storage.local.get('lang')).lang; } catch { /* Preview outside the extension. */ }
   await setLang(saved ?? detectLang(globalThis.chrome?.i18n?.getUILanguage?.() ?? navigator.language));
   select.value = getLang();
+  renderLangCode();
+  try { view = (await chrome.storage.local.get('view')).view || 'simple'; } catch { /* Preview. */ }
+  renderView();
   applyStatic();
   $('version').textContent = globalThis.chrome?.runtime?.getManifest?.().version ? `v${chrome.runtime.getManifest().version}` : '';
   select.addEventListener('change', async () => {
@@ -980,7 +1170,12 @@ async function init() {
     applyStatic();
     refreshDynamic();
     await refreshTabs();
-    status(t('status.language'), running ? t('status.started') : t('status.welcome.detail'));
+    renderLangCode();
+    if (cam.on) inMainTab(labels => globalThis.__reactMatchPip?.set({ labels }), camLabels()).catch(() => {});
+    if (running) status(t('status.started'), t('status.started.ocr'), 'active');
+    else if (both()) status(t('status.bothConnected'), t('status.bothConnected.detail'));
+    else if (sources.reference || sources.follower) status(t('status.oneConnected'), t('status.oneConnected.detail'));
+    else status(t('status.welcome'), t('status.welcome.detail'));
   });
   updateControls();
   await refreshTabs();

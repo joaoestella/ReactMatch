@@ -1,9 +1,9 @@
 {
   "extName": {
-    "message": "ReactMatch: Sync Reacts and Lives with the Game"
+    "message": "ReactMatch: Sync Reactions and Lives with Football"
   },
   "extDescription": {
-    "message": "Watch a reaction or live in sync with the game, movie or series, with the creator’s cam over the game. Reads the clocks on your PC."
+    "message": "Watch football with a reaction or live stream in sync with the game, the streamer's cam in a corner. Syncs itself, on your device."
   },
   "actionTitle": {
     "message": "Open ReactMatch"

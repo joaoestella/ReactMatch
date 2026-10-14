@@ -1,0 +1,29 @@
+Assista futebol com o react ou a live no mesmo segundo do jogo.
+
+Você abre o jogo numa aba e o react (ou a live do seu streamer favorito) em outra. Cada um chega com um atraso diferente, e o gol aparece no react antes ou depois de você ver. O ReactMatch resolve isso sozinho: ele lê o relógio da partida nos dois vídeos e segura o que estiver adiantado, até os dois mostrarem o mesmo minuto.
+
+⚽ FEITO PARA FUTEBOL
+• Lê o cronômetro do placar no jogo e no react, mesmo quando cada um assiste num serviço diferente.
+• Intervalo não atrapalha: a sincronia continua, sem pular 45 minutos.
+• Live atrasada? Ele pausa o jogo pelo tempo exato e volta sozinho.
+
+🎥 A CAM DO REACT EM CIMA DO JOGO
+• Ligue a cam e a câmera do streamer aparece num canto do jogo, até em tela cheia.
+• Escolha o canto, o tamanho e o volume do jogo e do react.
+• O botão ⋯ na própria cam sincroniza de novo, muda o som e a posição.
+
+👆 SIMPLES DE USAR
+1. Dê play no jogo e no react.
+2. Clique no ícone do ReactMatch.
+3. Toque na aba do jogo, toque na aba do react e aperte Sincronizar.
+
+🖥 FUNCIONA COM UMA TELA SÓ
+Deixe o react em segundo plano: ao sincronizar, a aba dele aparece por 2 segundos para ler o relógio e tudo volta como estava.
+
+🛠 MODO PRO
+Ajuste fino de meio em meio segundo, escolha manual do relógio, sincronia por "mesmo momento" para vídeos sem relógio (filmes e séries) e uma demonstração.
+
+🔒 PRIVADO
+Sem conta, sem servidor, sem analytics. As imagens são lidas na memória do seu computador e descartadas na hora. Código aberto: github.com/joaoestella/ReactMatch
+
+Em português, inglês e espanhol. Funciona no Chrome 116 ou mais novo, com vídeos que tocam no navegador (YouTube e outros sites com player de vídeo).

@@ -1,0 +1,29 @@
+Watch football with a reaction or live stream in sync with the game, to the second.
+
+You open the match in one tab and a reaction (or your favourite streamer's live) in another. Each arrives with a different delay, so the goal shows up in the reaction before or after you see it. ReactMatch fixes that by itself: it reads the match clock in both videos and holds back whichever is ahead until both show the same minute.
+
+⚽ MADE FOR FOOTBALL
+• Reads the scoreboard clock in the game and in the reaction, even when each of you watches on a different service.
+• Halftime is fine: the sync carries on, no 45-minute jump.
+• Live stream running late? It pauses the game for exactly the gap and resumes.
+
+🎥 THE REACTION CAM ON TOP OF THE GAME
+• Turn the cam on and the streamer's camera shows in a corner of the game, even in full screen.
+• Pick the corner, the size, and the volume of the game and of the reaction.
+• The ⋯ button on the cam syncs again and changes the sound and position.
+
+👆 EASY
+1. Press play on the game and the reaction.
+2. Click the ReactMatch icon.
+3. Tap the game's tab, tap the reaction's tab, and press Sync.
+
+🖥 WORKS WITH ONE SCREEN
+Leave the reaction in the background: when syncing, its tab shows for 2 seconds to read the clock, then everything goes back.
+
+🛠 PRO MODE
+Half-second fine tuning, manual clock picking, "same moment" sync for videos without a clock (movies and series), and a demo.
+
+🔒 PRIVATE
+No account, no server, no analytics. Frames are read in your computer's memory and discarded right away. Open source: github.com/joaoestella/ReactMatch
+
+In English, Portuguese and Spanish. Chrome 116 or newer, with videos that play in the browser (YouTube and other sites with a video player).
