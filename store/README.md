@@ -10,13 +10,13 @@ Everything the listing needs, ready to paste. Upload the zip built from the
 | Store icon | `icon-128.png` (also in the package) | 128×128, 96×96 artwork + transparent padding |
 | Screenshots (English) | `screenshots/en/screenshot-1…5-*.png` | 1280×800, PNG without alpha |
 | Screenshots (Portuguese) | `screenshots/pt/screenshot-1…5-*.png` | 1280×800, PNG without alpha |
+| Screenshots (Spanish) | `screenshots/es/screenshot-1…5-*.png` | 1280×800, PNG without alpha |
 | Small promo tile (required) | `promo/small-440x280.png` | 440×280 |
-| Marquee promo tile (optional) | `promo/marquee-1400x560-en.png` / `-pt.png` | 1400×560 |
+| Marquee promo tile (optional) | `promo/marquee-1400x560-en.png` / `-pt.png` / `-es.png` | 1400×560 |
 | GitHub social preview | `github-social-preview-1280x640.png` | 1280×640 |
 
 Order: 1 hero, 2 pick the tabs, 3 the cam, 4 one screen, 5 halftime and more.
-The Portuguese set goes in the *Portuguese (Brazil)* localization of the listing;
-the Spanish one can reuse the English images. How they were made: `scene/README.md`.
+Each set goes in its language's localization of the listing (English, Portuguese (Brazil), Spanish). How they were made: `scene/README.md`.
 
 ## Text
 

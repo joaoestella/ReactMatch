@@ -19,6 +19,17 @@ TXT = {
   's5': ('Intervalo, live atrasada, anúncio: ele segura.', ''),
   'feats': [(PAUSE, 'Intervalo', 'Mantém a sincronia, sem pular 45 minutos.'), (LIVE, 'Ao vivo', 'Live atrasada? Ele pausa o jogo pelo tempo certo.'), (TUNE, 'Ajuste fino', 'Meio segundo para lá ou para cá.'), (LOCK, 'Privado', 'Sem conta, sem servidor: tudo no seu PC.')],
  },
+ 'es': {
+  'tabs': ('EN VIVO | Leones vs Tigres – Final', 'REACCIÓN EN VIVO: Leones vs Tigres'),
+  'chips': [BALL + 'Hecho para el fútbol', 'Funciona con una pantalla', '100% en tu equipo'],
+  's1': ('Fútbol + reacción<br>al mismo segundo', 'La reacción o el directo siguen el partido solos, con la cámara del streamer en una esquina.'),
+  's2': ('Toca el partido.<br>Toca la reacción.<br>Listo.', 'ReactMatch muestra tus pestañas y encuentra solo el reloj de cada video.'),
+  's3': ('La cámara de la reacción<br>sobre el partido', 'Incluso en pantalla completa. Elige la esquina, el tamaño y el volumen de cada uno.'),
+  's4': ('¿Una sola pantalla?<br>Sin problema.', 'Deja la reacción en segundo plano. Al sincronizar, su pestaña aparece 2 segundos para leer el reloj y todo vuelve.'),
+  's4card': ('Sincronizado', 'Diferencia: 0,1 s · el video 2 está en segundo plano'),
+  's5': ('Descanso, directo atrasado, anuncios: aguanta.', ''),
+  'feats': [(PAUSE, 'Descanso', 'Sigue sincronizado, sin saltar 45 minutos.'), (LIVE, 'En vivo', '¿El directo va atrasado? Pausa el partido el tiempo justo.'), (TUNE, 'Ajuste fino', 'Medio segundo hacia un lado u otro.'), (LOCK, 'Privado', 'Sin cuenta ni servidor: todo en tu equipo.')],
+ },
  'en': {
   'tabs': ('LIVE | Lions vs Tigers – Cup Final', 'LIVE REACT: Lions vs Tigers'),
   'chips': [BALL + 'Made for football', 'Works with one screen', '100% on your device'],
@@ -94,6 +105,7 @@ def promo(w, h, head, sub, size):
             f'<div style="font-size:{size*0.62}px;color:#cfd6e2;margin-top:{size//5}px;line-height:1.25;font-weight:700">{head}</div>{subhtml}</div></body>')
 open(f'{S}/html/promo-small-440x280.html', 'w').write(promo(440, 280, 'Football + reaction,<br>same second', '', 34))
 open(f'{S}/html/promo-marquee-1400x560-en.html', 'w').write(promo(1400, 560, 'Football + reaction, same second', 'The streamer’s cam over the game, synced by itself.', 70))
+open(f'{S}/html/promo-marquee-1400x560-es.html', 'w').write(promo(1400, 560, 'Fútbol + reacción al mismo segundo', 'La cámara del streamer sobre el partido, sincronizada sola.', 70))
 open(f'{S}/html/promo-marquee-1400x560-pt.html', 'w').write(promo(1400, 560, 'Futebol + react no mesmo segundo', 'A cam do streamer em cima do jogo, sincronizada sozinha.', 70))
 open(f'{S}/html/social-1280x640.html', 'w').write(promo(1280, 640, 'Football + reaction, same second', 'Syncs a reaction or live with the game you watch, the streamer’s cam on top. 100% on your computer.', 60))
 json.dump(jobs, open(f'{S}/html/jobs.json', 'w'))
