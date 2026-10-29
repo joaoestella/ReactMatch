@@ -42,7 +42,11 @@ Chrome 116+ (and Chromium browsers such as Edge, Brave and Opera).
 
 The order doesn't matter: whichever video is ahead goes back (or, if its player can't rewind, pauses for the difference). If the reaction still feels a little early or late, use the fine adjustment.
 
-**Reaction in the background (one screen).** Chrome stops drawing videos in background tabs, so their clocks can't be read there. When you sync, ReactMatch shows the background tab for about two seconds to read its clock and then brings back the tab you were on. From then on the two videos are kept together by their own timelines; tap **Sync again** if the creator pauses or rewinds their game. To keep reading both clocks all the time, turn on the cam on the game (the reaction is then captured and keeps drawing), click the ReactMatch icon once on the reaction's tab (or press **Alt+Shift+S** there), or use **Side by side**.
+**Reaction in the background (one screen).** Chrome can stop drawing videos in background tabs. When you sync, ReactMatch briefly shows an uncaptured tab to read its clock and then restores the tab you were watching. This also works with manually selected clocks and when syncing again; confirming selected regions takes several seconds per video. While only the players' timelines are available, the panel says **Estimated sync**, because the clocks are not being re-read. Tap **Sync again** if the creator pauses or rewinds their game. To keep reading in the background, click the ReactMatch icon once on **each video's tab** (or press **Alt+Shift+S** there). Turning on the cam keeps the reaction captured too; **Side by side** is another option.
+
+**Small clocks.** Detection keeps small text regions and enlarges them before reading. Uncertain readings get a contrast-enhanced retry, and synchronization requires consistent clock readings. If the clock is still unreadable, select just its digits in Pro mode or increase the video's playback quality; enlarging a blurred image cannot restore missing detail.
+
+**0.4.1 clock-reading fixes.** Clock digits and colons returned as separate nearby OCR words are joined before detection. Calibration uses at least three reliable readings, so one blurred frame no longer discards the other four. A failed calibration identifies the video and displays the recognized text. After updating, reload the extension and both video tabs; the panel should show **v0.4.1**.
 
 ### The creator's cam over the game
 
