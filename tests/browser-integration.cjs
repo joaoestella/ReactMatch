@@ -23,10 +23,15 @@ fs.cpSync(path.resolve(__dirname, '../extension'), extension, { recursive: true 
 // Test copy only: pre-grant the two local origins so no permission prompt appears.
 const manifest = JSON.parse(fs.readFileSync(path.join(extension, 'manifest.json')));
 manifest.host_permissions = ['http://127.0.0.1/*', 'http://localhost/*'];
+// A test-only key makes the ID independent of platform path normalization.
+manifest.key = require('node:crypto').generateKeyPairSync('rsa', { modulusLength: 1024 }).publicKey
+  .export({ type: 'spki', format: 'der' }).toString('base64');
 fs.writeFileSync(path.join(extension, 'manifest.json'), JSON.stringify(manifest));
 
 function fixture(name, seconds, clockStart, overlay) {
-  const font = ['/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 'C\\:/Windows/Fonts/arialbd.ttf'].find(f => fs.existsSync(f.replace('\\', ''))) || 'DejaVuSans-Bold.ttf';
+  const fontPath = ['/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 'C:/Windows/Fonts/arialbd.ttf'].find(f => fs.existsSync(f)) || 'DejaVuSans-Bold.ttf';
+  // Keep the Windows drive colon inside the filter's quoted fontfile value.
+  const font = `'${fontPath.replace(':', '\\:')}'`;
   const clock = start => `%{eif\\:floor((t+${start})/60)\\:d\\:2}\\:%{eif\\:mod(floor(t+${start})\\,60)\\:d\\:2}`;
   const filters = ['format=yuv420p', 'noise=alls=10:allf=t', ...overlay(font, clock(clockStart), clock)].join(',');
   const script = path.join(scratch, `${name}.txt`);
@@ -121,7 +126,7 @@ const server = http.createServer((req, res) => {
   res.end(typeof page === 'function' ? page() : page || '');
 });
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-const extensionId = dir => [...require('node:crypto').createHash('sha256').update(fs.realpathSync(dir)).digest('hex').slice(0, 32)]
+const extensionId = () => [...require('node:crypto').createHash('sha256').update(Buffer.from(manifest.key, 'base64')).digest('hex').slice(0, 32)]
   .map(c => String.fromCharCode(97 + parseInt(c, 16))).join('');
 
 (async () => {
@@ -130,8 +135,8 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
   const base = `http://127.0.0.1:${port}`;
   const context = await chromium.launchPersistentContext(path.join(scratch, 'profile'), {
     executablePath: process.env.CHROMIUM || chromium.executablePath(), headless: !process.env.HEADFUL,
-    // Unpacked extensions get their ID from their path. The allowlist switch
-    // stands in for clicking the icon on the reaction's tab (tab capture).
+    // The allowlist switch stands in for clicking the extension icon on the
+    // video's tab (tab capture); it applies only to this temporary test copy.
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`, '--autoplay-policy=no-user-gesture-required', '--lang=en-US', '--window-size=1280,900', `--allowlisted-extension-id=${extensionId(extension)}`],
     viewport: null, // real window sizes, so a tab capture matches the page's own size
   });
@@ -170,8 +175,8 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
         await card.click();
         await panel.waitForFunction(role => document.getElementById(`${role}-slot`).dataset.filled === 'true', role);
       }
-      const waitTitle = (test, timeout = 30000) => panel.waitForFunction(test => document.getElementById('status-title').textContent.startsWith(test), test, { timeout })
-        .catch(async error => { throw new Error(`${error.message}\nstatus: ${await panel.locator('#status-title').textContent()} | ${await panel.locator('#status-detail').textContent()}`); });
+      const waitTitle = (test, timeout = 45000) => panel.waitForFunction(test => document.getElementById('status-title').textContent.startsWith(test), test, { timeout })
+        .catch(async error => { throw new Error(`${error.message}\nstatus: ${await panel.locator('#status-title').textContent()} | ${await panel.locator('#status-detail').textContent()}\nClock picker: ${await panel.locator('#crop-dialog').isVisible()}; ${await panel.locator('#crop-description').textContent()}`); });
       const offset = async () => (await frame.evaluate(() => document.getElementById('v').currentTime)) - (await creator.evaluate(() => document.getElementById('v').currentTime));
       const labels = async () => [await panel.locator('#reference-capture').textContent(), await panel.locator('#follower-capture').textContent()];
       if (arrange) {
@@ -315,7 +320,9 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     const single = await scenario('/game-top', page => page.mainFrame(), false, { beforeStart: async ({ panel, tabOf }) => {
       await panel.evaluate(async ([game, react]) => {
         // Like the real panel, in a window of its own beside the browser.
-        await chrome.windows.create({ tabId: (await chrome.tabs.getCurrent()).id, width: 460, height: 900, left: 1140, top: 0 });
+        await chrome.windows.create({ tabId: (await chrome.tabs.getCurrent()).id,
+          width: 460, height: Math.min(900, screen.availHeight),
+          left: (screen.availLeft || 0) + Math.max(0, screen.availWidth - 460), top: screen.availTop || 0 });
         const g = await chrome.tabs.get(game);
         await chrome.tabs.move(react, { windowId: g.windowId, index: -1 });
         await chrome.tabs.update(game, { active: true });
@@ -339,7 +346,7 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
       }, [Number(tabOf('/game-top')), Number(tabOf('/reaction'))]);
       await sleep(600);
     } });
-    await single.waitTitle('In sync');
+    await single.waitTitle('Estimated sync');
     const singleSynced = await single.offset();
     assert.ok(Math.abs(singleSynced + 20) < 0.6, `single screen: offset after sync ${singleSynced}`);
     const gameActive = await single.panel.evaluate(async () => (await chrome.tabs.query({})).filter(tab => tab.url.endsWith('/game-top')).sort((a, b) => b.id - a.id)[0].active);
@@ -347,11 +354,63 @@ const extensionId = dir => [...require('node:crypto').createHash('sha256').updat
     assert.match(await single.panel.locator('#status-detail').textContent(), /background/);
     await single.frame.evaluate(() => { document.getElementById('v').currentTime += 7; });
     await single.waitTitle('Adjusting video 1');
-    await single.waitTitle('In sync');
+    await single.waitTitle('Estimated sync');
     await sleep(3000);
     const singleRecovered = await single.offset();
     assert.ok(Math.abs(singleRecovered + 20) < 0.6, `single screen: offset after drift ${singleRecovered}`);
     report.singleScreen = { offsetAfterSync: +singleSynced.toFixed(2), offsetAfterDrift: +singleRecovered.toFixed(2) };
+
+    // Repeat with the already-selected regions: no automatic finder seeds
+    // remain. This used to stay stuck forever on a hidden tab with no anchor.
+    await single.panel.locator('#start').click();
+    // Lose one selected-region frame, as happens while scoreboard digits
+    // animate. The other four readings must still be enough to calibrate.
+    await single.panel.evaluate(async () => {
+      const tab = (await chrome.tabs.query({})).find(tab => tab.url.endsWith('/game-top'));
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => {
+        const bridge = globalThis.__reactMatchBridge, run = bridge.run.bind(bridge);
+        let dropped = false;
+        bridge.run = async (id, operation, options) => {
+          const result = await run(id, operation, options);
+          if (!dropped && operation === 'grab' && options?.region) {
+            dropped = true;
+            const blank = document.createElement('canvas'); blank.width = 180; blank.height = 90;
+            result.image = blank.toDataURL('image/png');
+          }
+          return result;
+        };
+      } });
+    });
+    await single.panel.locator('#start').click();
+    await single.waitTitle('Estimated sync', 45000);
+    const resynced = await single.offset();
+    assert.ok(Math.abs(resynced + 20) < 0.8, `background resync ${resynced}`);
+    const restored = await single.panel.evaluate(async () => (await chrome.tabs.query({})).find(tab => tab.url.endsWith('/game-top')).active);
+    assert.equal(restored, true, 'selected-region calibration restores the game tab');
+    report.singleScreen.resynced = +resynced.toFixed(2);
+
+    // If a selected clock disappears, retrying must fail visibly instead of
+    // claiming success from the two players' positions or an old estimate.
+    await single.panel.locator('#start').click();
+    await single.panel.evaluate(async () => {
+      const tab = (await chrome.tabs.query({})).find(tab => tab.url.endsWith('/game-top'));
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => {
+        const bridge = globalThis.__reactMatchBridge, run = bridge.run.bind(bridge);
+        bridge.run = async (id, operation, options) => {
+          const result = await run(id, operation, options);
+          if (operation === 'grab' && options?.region) {
+            const blank = document.createElement('canvas'); blank.width = 180; blank.height = 90;
+            const ctx = blank.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 180, 90);
+            result.image = blank.toDataURL('image/png');
+          }
+          return result;
+        };
+      } });
+    });
+    await single.panel.locator('#start').click();
+    await single.waitTitle('Couldn’t read the clock');
+    assert.equal(await single.panel.locator('#start-word').textContent(), 'Sync');
+    report.singleScreen.unreadableRejected = true;
 
     assert.deepEqual(errors, []);
     report.pageErrors = errors;

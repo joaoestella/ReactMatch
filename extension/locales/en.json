@@ -268,5 +268,7 @@
   "status.pickAgain.detail": "Tap the one you want.",
   "status.peek": "Reading video {side}…",
   "status.peek.detail": "Its tab shows for a moment so the clock can be read, then everything goes back.",
-  "status.syncedBg.detail": "Difference: {s} · video {side} is in the background, so it follows the videos’ time."
+  "error.clockSamples": "Could not confirm video {side}’s clock. Recognized text: “{text}”. Select just the digits and colons while the clock is running. Also check the video quality.",
+  "status.estimated": "Estimated sync",
+  "status.syncedBg.detail": "Estimated difference: {s}. Video {side}’s clock is not being re-read in the background. Click the ReactMatch icon on that tab to enable continuous reading, or sync again."
 }

@@ -1,6 +1,6 @@
 import { BrowserAdapter } from './browser-adapter.js';
 import { DemoAdapter } from './demo-adapter.js';
-import { parseClock, formatTime, clockTarget, insideRanges, decideCorrection, ClockTracker, anchorFromClocks, OffsetLock, findClocks, regionAround, regionInTab } from './core.js';
+import { parseClock, formatTime, clockTarget, insideRanges, decideCorrection, ClockTracker, anchorFromClocks, OffsetLock, findClocks, regionAround, regionInTab, calibrationReadings } from './core.js';
 import { LocalOCR, loadImage, cropFrame, startTabCapture, selectRegion, scanClocks } from './ocr.js';
 import { t, setLang, getLang, detectLang, applyStatic, getLocale, LANGUAGES } from './i18n.js';
 
@@ -24,6 +24,7 @@ const cam = { region: null, on: false, corner: 'bottom-right', free: null, size:
 // Tabs captured only to keep them drawing while in the background, so their
 // clock can still be read (video only, small: their sound keeps playing there).
 const keepAlive = { reference: null, follower: null };
+const drawingPending = { reference: null, follower: null };
 // Tabs where the user has clicked the icon: Chrome lets us capture those.
 const invoked = new Set();
 // A video paused on purpose to let the other catch up, and players known to
@@ -70,7 +71,7 @@ function hasOCR() { return !!captures.reference && !!captures.follower; }
 function updateControls() {
   const connected = both();
   for (const id of ['pause-both', 'mark-moment', 'apply-times', 'trim-minus', 'trim-plus', 'trim-reset']) $(id).disabled = !connected;
-  $('start').disabled = !connected;
+  $('start').disabled = !connected || working;
   $('start-word').textContent = running ? t('go.stop') : t('go.start');
   $('start').setAttribute('aria-label', running ? t('start.stop') : t('start.start'));
   $('go').dataset.state = working ? 'working' : running ? 'running' : connected ? 'ready' : 'idle';
@@ -312,7 +313,8 @@ function setAnchor(states, difference) {
 }
 // A side whose tab is in the background (or whose window is covered) shows a
 // frozen picture: Chrome stops drawing it, so its clock can't be read.
-const captured = role => !!keepAlive[role] || (cam.on && role === 'follower');
+const liveStream = stream => stream?.getVideoTracks().some(track => track.readyState === 'live');
+const captured = role => liveStream(keepAlive[role]?.stream) || liveStream(captures[role]?.stream) || (cam.on && role === 'follower');
 function hiddenSide(states) {
   // A tab being captured (for the cam, or to keep it drawing) draws even in the background.
   return roles.find(role => states[role].hidden && !captured(role));
@@ -371,9 +373,14 @@ async function peek(role, work) {
 // Looks for the clocks of these sides: the visible ones together, then each
 // background one through a quick peek.
 async function look(sides, token) {
-  const states = await pair();
+  const states = Object.fromEntries(await Promise.all(sides.map(async role => [role, await adapter.command(sources[role], 'snapshot')])));
   const away = [];
-  for (const role of sides) if (states[role].hidden && !captured(role) && !(await keepDrawing(role))) away.push(role);
+  for (const role of sides) {
+    // Start an authorized capture while the tab is still visible, too.
+    // Otherwise switching tabs can freeze the decoder before the next tick.
+    const drawing = await keepDrawing(role);
+    if (states[role].hidden && !drawing) away.push(role);
+  }
   if (sides.some(role => keepAlive[role])) await sleep(600);
   const near = sides.filter(role => !away.includes(role));
   const found = {};
@@ -392,23 +399,42 @@ async function look(sides, token) {
 // the ReactMatch icon was clicked on that tab.
 async function keepDrawing(role) {
   if (captured(role)) return true;
-  try {
-    const id = await chrome.tabCapture.getMediaStreamId({ targetTabId: sources[role].tabId });
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: id, maxWidth: 640, maxHeight: 360, maxFrameRate: 5 } }
-    });
-    const video = document.createElement('video');
-    video.muted = true; video.srcObject = stream;
-    await video.play().catch(() => {});
-    keepAlive[role] = { stream, video, tabId: sources[role].tabId };
-    stream.getVideoTracks()[0].addEventListener('ended', () => { if (keepAlive[role]?.stream === stream) keepAlive[role] = null; });
-    frozen[role] = { sig: null, since: 0 };
-    return true;
-  } catch { return false; }
+  if (drawingPending[role]) return drawingPending[role];
+  const source = sources[role];
+  if (!source) return false;
+  const pending = (async () => {
+    let stream, video;
+    try {
+      const id = await chrome.tabCapture.getMediaStreamId({ targetTabId: source.tabId });
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: id, maxWidth: 640, maxHeight: 360, maxFrameRate: 5 } }
+      });
+      video = document.createElement('video');
+      video.muted = true; video.srcObject = stream;
+      await video.play();
+      if (sources[role] !== source || drawingPending[role] !== pending || !liveStream(stream)) throw new Error('capture-cancelled');
+      keepAlive[role] = { stream, video, tabId: source.tabId };
+      stream.getVideoTracks()[0].addEventListener('ended', () => {
+        if (keepAlive[role]?.stream === stream) keepAlive[role] = null;
+        video.srcObject = null;
+      });
+      frozen[role] = { sig: null, since: 0 };
+      return true;
+    } catch {
+      stream?.getTracks().forEach(track => track.stop());
+      if (video) video.srcObject = null;
+      return false;
+    }
+  })();
+  drawingPending[role] = pending;
+  try { return await pending; }
+  finally { if (drawingPending[role] === pending) drawingPending[role] = null; }
 }
 function stopDrawing(role) {
+  drawingPending[role] = null;
   keepAlive[role]?.stream.getTracks().forEach(track => track.stop());
+  if (keepAlive[role]) keepAlive[role].video.srcObject = null;
   keepAlive[role] = null;
 }
 
@@ -428,6 +454,45 @@ async function shoot(role) {
   return { image: cropFrame(capture), time: state.time, paused: state.paused };
 }
 
+// Selected regions need the same initial calibration as automatically found
+// clocks. Gather frames while each tab is visible, then OCR them without
+// keeping the viewer on that tab. Each reading carries its own player time.
+async function calibrateRegions(token) {
+  const readings = {};
+  for (const role of roles) {
+    const collect = async () => {
+      const shots = [];
+      for (let i = 0; i < 5; i++) {
+        if (i) await sleep(1100);
+        if (token !== revision) return null;
+        shots.push(await shoot(role));
+      }
+      return shots;
+    };
+    const drawing = await keepDrawing(role);
+    if (drawing) await sleep(600);
+    const shots = drawing ? await collect() : await peek(role, collect);
+    if (!shots || token !== revision) return false;
+    const samples = [];
+    for (const shot of shots) {
+      if (shot.error) throw new Error(shot.error);
+      const reading = await ocr.read(shot.image);
+      if (token !== revision) return false;
+      samples.push({ ...reading, time: shot.time, paused: shot.paused });
+    }
+    readings[role] = calibrationReadings(samples, direction());
+    if (readings[role].length < 3) {
+      const best = samples.filter(sample => sample.text?.trim()).sort((a, b) => b.confidence - a.confidence)[0];
+      status(t('status.cantRead'), t('error.clockSamples', { side: sideName(role), text: best?.text.trim().slice(0, 60) || '—' }), 'warning');
+      return false;
+    }
+    $(role + '-capture').textContent = t('clock.read', { time: formatTime(readings[role].at(-1).clock) });
+  }
+  const count = Math.min(readings.reference.length, readings.follower.length);
+  seeds = readings.reference.slice(-count).map((reading, i) => anchorFromClocks(reading, readings.follower.slice(-count)[i], direction()));
+  return true;
+}
+
 async function readPairClocks(token) {
   // Both stills are taken before OCR starts, and each carries its own player
   // position, so the time spent reading never turns into an offset.
@@ -440,8 +505,9 @@ async function readPairClocks(token) {
   if (token !== revision) return null;
   // The label keeps the last good reading; one bad frame isn't worth a flicker.
   for (const role of roles) {
-    misses[role] = readings[role].value === null ? misses[role] + 1 : 0;
-    if (readings[role].value !== null) $(role + '-capture').textContent = t('clock.read', { time: formatTime(readings[role].value) });
+    const readable = readings[role].value !== null && readings[role].confidence >= 65;
+    misses[role] = readable ? 0 : misses[role] + 1;
+    if (readable) $(role + '-capture').textContent = t('clock.read', { time: formatTime(readings[role].value) });
     else if (misses[role] >= 3) $(role + '-capture').textContent = t('clock.unreadable');
   }
   return { readings };
@@ -461,10 +527,17 @@ async function ocrTick(token, states) {
   lastOCR = performance.now();
   const result = await readPairClocks(token);
   if (!result || token !== revision || !running) return;
-  if (result.error) { status(t('status.cantRead'), result.error, 'warning'); return; }
+  if (result.error) {
+    notice = { title: t('status.cantRead'), detail: result.error, until: Infinity };
+    status(notice.title, notice.detail, 'warning'); return;
+  }
   const { readings } = result;
   const stuck = roles.find(role => pictureStuck(role, readings[role]));
-  if (stuck) { if (!(await keepDrawing(stuck))) { if (anchor === null) showHidden(stuck); else background = stuck; } return; }
+  if (stuck) {
+    if (!(await keepDrawing(stuck))) { if (anchor === null) showHidden(stuck); else background = stuck; }
+    else notice = { title: t('status.break'), detail: t('reason.frozen'), until: Infinity };
+    return;
+  }
   // Clocks are checked against the player's own timeline: one second of video
   // must move the clock by one second, whatever the playback speed.
   const checks = roles.map(role => trackers[role].push(readings[role].value, readings[role].time * 1000, readings[role].confidence, 1));
@@ -472,6 +545,7 @@ async function ocrTick(token, states) {
     if (anchor === null) status(t('status.confirming'), t(`reason.${checks.find(check => !check.valid).reason}`), 'warning');
     // Halftime, a replay, a stopped clock: keep the offset we have.
     else if (clocksSeenAt && performance.now() - clocksSeenAt > 15000) notice = { title: t('status.break'), detail: t('status.break.detail'), until: Infinity };
+    else if (roles.some(role => misses[role] >= 3)) notice = { title: t('status.cantRead'), detail: t('reason.unreadable'), until: Infinity };
     return;
   }
   clocksSeenAt = performance.now();
@@ -531,8 +605,9 @@ async function applyTarget(target, states, token) {
   } else if (result.action === 'aligned') {
     $('arrange').classList.remove('attention');
     if (statusAction && !lock.pending) offerAction(null);
-    if (notice && performance.now() < notice.until) status(notice.title, notice.detail, 'active');
-    else if (background) status(t('status.synced'), t('status.syncedBg.detail', { s: `${number(Math.abs(result.error))} s`, side: sideName(background) }), 'active');
+    if (lock.pending?.count >= lock.confirm) status(t('status.clockMoved'), t('status.clockMoved.detail', { s: seconds(lock.pending.diff) }), 'warning');
+    else if (notice && performance.now() < notice.until) status(notice.title, notice.detail, notice.until === Infinity ? 'warning' : 'active');
+    else if (background) status(t('status.estimated'), t('status.syncedBg.detail', { s: `${number(Math.abs(result.error))} s`, side: sideName(background) }), 'warning');
     else status(t('status.synced'), t('status.synced.detail', { s: `${number(Math.abs(result.error))} s` }) + (demo ? ` · ${t('demo.tag')}` : ''), 'active');
   } else if (result.action === 'unavailable' && roles.some(role => !canHold[role])) {
     showJumped(roles.find(role => !canHold[role]));
@@ -639,7 +714,7 @@ async function detect(sidesToCheck, token) {
   const shots = Object.fromEntries(sidesToCheck.map(role => [role, []]));
   for (let i = 0; i < 3; i++) {
     if (i) await sleep(1100);
-    const taken = await Promise.all(sidesToCheck.map(role => adapter.command(sources[role], 'grab', { maxWidth: 1920, type: 'image/jpeg' })));
+    const taken = await Promise.all(sidesToCheck.map(role => adapter.command(sources[role], 'grab', { maxWidth: 2560, type: 'image/png' })));
     if (token !== revision) return null;
     taken.forEach((shot, index) => shots[sidesToCheck[index]].push(shot));
   }
@@ -679,7 +754,7 @@ function useVideoRegion(role, region, label) {
 async function pickOnStill(role, token, found) {
   let still, screen = null, clocks = [], shot = found?.last;
   if (!shot && !found?.error) {
-    shot = await adapter.command(sources[role], 'grab', { maxWidth: 1920, type: 'image/jpeg' });
+    shot = await adapter.command(sources[role], 'grab', { maxWidth: 2560, type: 'image/png' });
     if (token !== revision) return false;
     if (shot.error === 'not-ready') throw new Error(t('error.playToGrab'));
     if (shot.error || shot.blank) shot = null;
@@ -791,6 +866,7 @@ async function start() {
   if (busy) throw new Error(t('error.busyStart'));
   stop(false);
   const token = revision;
+  seeds = [];
   if (anchor === null || hasOCR()) {
     if (demo) throw new Error(t('error.markFirst'));
     if (!(await findMissingClocks(token)) || token !== revision) return;
@@ -807,11 +883,15 @@ async function start() {
   if (token !== revision) return;
   const error = results.find(result => result.status === 'rejected');
   if (error) throw error.reason;
+  if (currentKind === 'ocr' && seeds.length < 3) {
+    status(t('status.confirming'), t('status.started.ocr'), 'active');
+    if (!(await calibrateRegions(token)) || token !== revision) return;
+  }
   running = true; revision++; resetTrackers(); updateControls();
   if (currentKind === 'ocr') {
     let out = null;
     for (const value of seeds) out = lock.push(value);
-    if (out?.anchor != null) setAnchor(states, out.anchor);
+    if (out?.anchor != null) { setAnchor(states, out.anchor); clocksSeenAt = performance.now(); }
   }
   seeds = [];
   status(t('status.started'), currentKind === 'ocr' ? t('status.started.ocr') : t('status.started.timeline'), 'active');
@@ -973,13 +1053,8 @@ async function setVolume(role, value, fromCam = false) {
 // "Sync again" from the cam's menu: learn the offset again from the clocks,
 // or start from scratch when not syncing.
 async function resync() {
-  if (running && currentKind === 'ocr') {
-    anchor = null; sourceKeys = null; lastSeek = -Infinity; resetTrackers();
-    status(t('status.started'), t('status.started.ocr'), 'active');
-  } else {
-    if (running) stop(false);
-    await start();
-  }
+  if (running) stop(false);
+  await start();
 }
 
 // What the viewer does on the cam (menu and dragging), and the icon clicks

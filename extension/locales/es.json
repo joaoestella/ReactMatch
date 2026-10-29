@@ -268,5 +268,7 @@
   "status.pickAgain.detail": "Toca la que quieras.",
   "status.peek": "Leyendo el video {side}…",
   "status.peek.detail": "Su pestaña aparece un momento para leer el reloj y luego todo vuelve a estar como antes.",
-  "status.syncedBg.detail": "Diferencia: {s} · el video {side} está en segundo plano, así que sigue el tiempo de los videos."
+  "error.clockSamples": "No se pudo confirmar el reloj del video {side}. Texto reconocido: “{text}”. Selecciona solo los números y los dos puntos, con el reloj en marcha. Revisa también la calidad del video.",
+  "status.estimated": "Sincronía estimada",
+  "status.syncedBg.detail": "Diferencia estimada: {s}. El reloj del video {side} no se está leyendo en segundo plano. Pulsa el icono de ReactMatch en esa pestaña para permitir la lectura continua, o sincroniza de nuevo."
 }
