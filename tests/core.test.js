@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseClock, clockFromOCR, clockTarget, decideCorrection, ClockTracker, anchorFromClocks, AnchorEstimator, clockTokens, findClocks, regionAround, regionInTab, OffsetLock, isPeriodShift } from '../extension/core.js';
 import { textBoxes } from '../extension/finder.js';
+import { calibrationReadings } from '../extension/core.js';
 
 test('reads long timers and hours; rejects invalid seconds and ambiguous OCR', () => {
   assert.equal(parseClock('125:42'), 7542);
@@ -10,6 +11,33 @@ test('reads long timers and hours; rejects invalid seconds and ambiguous OCR', (
   assert.equal(parseClock('1:72:00'), null);
   assert.equal(clockFromOCR(' 25 : 40\n'), 1540);
   assert.equal(clockFromOCR('25:40 12:05'), null);
+  assert.equal(clockFromOCR('1025:30'), null);
+  assert.equal(clockFromOCR('25:400'), null);
+});
+
+test('automatic detection joins separated clock words, including hours', () => {
+  const words = (texts, gap = 5) => texts.map((text, i) => ({ text, confidence: 90,
+    bbox: { x0: i * (30 + gap), x1: i * (30 + gap) + 30, y0: 10, y1: 40 } }));
+  for (const texts of [['25', ':', '40'], ['25:', '40'], ['25', ':40'], ['25 : 40']]) {
+    assert.deepEqual(clockTokens(words(texts), 500, 100).map(t => t.value), [1540]);
+  }
+  assert.deepEqual(clockTokens(words(['1', ':', '25', ':', '40']), 500, 100).map(t => [t.value, t.parts]), [[5140, 3]]);
+  assert.deepEqual(clockTokens(words(['25', ':', '40'], 100), 500, 100), [], 'distant text is not a clock');
+  const lines = words(['25', ':', '40']); lines[2].bbox.y0 = 70; lines[2].bbox.y1 = 100;
+  assert.deepEqual(clockTokens(lines, 500, 100), [], 'different rows must not join');
+  assert.deepEqual(clockTokens(words(['1', '25:40', '12:05']), 500, 100).map(t => t.value), [1540, 725]);
+});
+
+test('calibration accepts a blurred frame but requires three reliable, ticking samples', () => {
+  const samples = [0, 1.1, 2.2, 3.3, 4.4].map((time, i) => ({ value: 1500 + i, time, confidence: 90, paused: false }));
+  const blurred = samples.map((r, i) => i === 2 ? { ...r, value: null, confidence: 0 } : r);
+  assert.equal(calibrationReadings(blurred).length, 4);
+  assert.equal(calibrationReadings(samples.map((r, i) => i === 0 || i === 4 ? { ...r, confidence: 0 } : r)).length, 3);
+  assert.deepEqual(calibrationReadings(samples.slice(0, 2)), []);
+  assert.deepEqual(calibrationReadings(samples.map(r => ({ ...r, value: 1500 }))), []);
+  assert.deepEqual(calibrationReadings(samples.map(r => ({ ...r, paused: true }))), []);
+  assert.deepEqual(calibrationReadings(samples.map((r, i) => ({ ...r, value: i === 2 ? 1800 : r.value }))), []);
+  assert.equal(calibrationReadings(samples.map((r, i) => ({ ...r, value: 1500 - i })), -1).length, 5);
 });
 
 test('corrects either direction and countdown without confusing media and content time', () => {
@@ -131,6 +159,27 @@ test('text finder marks a line of glyphs and ignores flat or noisy areas', () =>
   const boxes = textBoxes({ data, width, height });
   assert.equal(boxes.length, 1);
   assert.ok(Math.abs(boxes[0].y - 100) <= 1 && Math.abs(boxes[0].h - 20) <= 1 && boxes[0].x <= 50 && boxes[0].x + boxes[0].w >= 115);
+});
+
+test('small clock glyphs in a full-HD reaction are retained for enlarged OCR', () => {
+  const width = 1920, height = 1080, data = new Uint8ClampedArray(width * height * 4);
+  for (let glyph = 0; glyph < 5; glyph++) for (let y = 980; y < 987; y++) for (const x of [0, 1, 6, 7]) {
+    data.set([240, 240, 240, 255], (y * width + 1700 + glyph * 12 + x) * 4);
+  }
+  const boxes = textBoxes({ data, width, height });
+  assert.ok(boxes.some(box => box.y === 980 && box.h === 7 && box.x <= 1700 && box.x + box.w >= 1755));
+});
+
+test('uncertain OCR cannot seed sync even when its guesses appear to tick', () => {
+  const frames = [0, 1.1, 2.2].map((time, i) => ({ time, tokens: [{
+    value: 1500 + i, text: `25:0${i}`, parts: 2, confidence: 40,
+    box: { x: 0.1, y: 0.1, w: 0.1, h: 0.03 }
+  }] }));
+  assert.deepEqual(findClocks(frames), []);
+  frames[0].tokens[0].confidence = frames[1].tokens[0].confidence = 90;
+  assert.deepEqual(findClocks(frames), [], 'an uncertain last frame is not a reference');
+  frames[2].tokens[0].confidence = 90;
+  assert.equal(findClocks(frames).length, 1);
 });
 
 test('a region of the video is found in a capture of the whole tab, letterbox included', () => {

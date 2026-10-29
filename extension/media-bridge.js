@@ -55,7 +55,7 @@
     let scale = Math.min(1, maxWidth / sw);
     // Small videos are enlarged a little: tiny clock digits read much better.
     if (minWidth && sw * scale < minWidth) scale = Math.min(2, minWidth / sw);
-    if (minHeight && sh * scale < minHeight) scale = Math.min(4, minHeight / sh);
+    if (minHeight && sh * scale < minHeight) scale = Math.min(8, minHeight / sh);
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(sw * scale));
     canvas.height = Math.max(1, Math.round(sh * scale));

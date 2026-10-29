@@ -75,6 +75,57 @@ const shots = process.env.SHOTS || fs.mkdtempSync(path.join(os.tmpdir(), 'reactm
     assert.equal(reading.value, 1540);
     assert.ok(reading.confidence >= 65, JSON.stringify(reading));
 
+    const spacedClock = await page.evaluate(async () => {
+      const { LocalOCR } = await import('./ocr.js');
+      const { clockTokens } = await import('./core.js');
+      const canvas = document.createElement('canvas'); canvas.width = 400; canvas.height = 100;
+      const ctx = canvas.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 400, 100);
+      ctx.fillStyle = '#111'; ctx.font = 'bold 56px Arial'; ctx.fillText('25 : 40', 20, 72);
+      const reader = new LocalOCR();
+      try { const words = await reader.line(canvas); return { words: words.map(w => w.text), tokens: clockTokens(words, 400, 100) }; }
+      finally { await reader.close(); }
+    });
+    assert.deepEqual(spacedClock.tokens.map(token => token.value), [1540], JSON.stringify(spacedClock));
+
+    // A tiny clock inside a full-HD reaction must survive text detection,
+    // enlargement and real OCR (the old relative height filter discarded it).
+    const smallClock = await page.evaluate(async () => {
+      const { LocalOCR, scanClocks, prepareClock } = await import('./ocr.js');
+      const canvas = document.createElement('canvas');
+      canvas.width = 1920; canvas.height = 1080;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#151515'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Arial'; ctx.fillText('25:40', 1700, 990);
+      const reader = new LocalOCR();
+      try {
+        const tokens = await scanClocks(reader, canvas.toDataURL('image/png'));
+        const crop = document.createElement('canvas'); crop.width = 42; crop.height = 14;
+        crop.getContext('2d').drawImage(canvas, 1697, 979, 42, 14, 0, 0, 42, 14);
+        return { tokens, enhanced: await reader.read(prepareClock(crop)) };
+      } finally { await reader.close(); }
+    });
+    assert.ok(smallClock.tokens.some(token => token.value === 1540 && token.confidence >= 65), JSON.stringify(smallClock));
+    assert.equal(smallClock.enhanced.value, 1540, JSON.stringify(smallClock));
+
+    // Manual selection accepts a tiny, nonempty region and still rejects a
+    // near-empty drag. Coordinates come from the full-resolution source.
+    await page.evaluate(async () => {
+      const { selectRegion } = await import('./ocr.js');
+      const still = document.createElement('canvas'); still.width = 1920; still.height = 1080;
+      window.selection = selectRegion(document.getElementById('crop-dialog'), still);
+    });
+    const cropBox = await page.locator('#crop-canvas').boundingBox();
+    const drag = async (w, h) => {
+      await page.mouse.move(cropBox.x + 20, cropBox.y + 20); await page.mouse.down();
+      await page.mouse.move(cropBox.x + 20 + w / 1920 * cropBox.width, cropBox.y + 20 + h / 1080 * cropBox.height);
+      await page.mouse.up();
+    };
+    await drag(30, 7);
+    assert.equal(await page.locator('#crop-save').isEnabled(), true);
+    await drag(1, 1);
+    assert.equal(await page.locator('#crop-save').isEnabled(), false);
+    await page.locator('#crop-close').click();
+
     // Every language fits a narrow window.
     await page.setViewportSize({ width: 360, height: 950 });
     for (const lang of ['en', 'pt', 'es']) {
@@ -83,6 +134,6 @@ const shots = process.env.SHOTS || fs.mkdtempSync(path.join(os.tmpdir(), 'reactm
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${lang} overflows`);
     }
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ extensionLoaded: true, demo: true, languages: ['en', 'pt', 'es'], ocr: reading, narrowLayout: true, pageErrors: errors }, null, 2));
+    console.log(JSON.stringify({ extensionLoaded: true, demo: true, languages: ['en', 'pt', 'es'], ocr: reading, spacedClock, smallClock, narrowLayout: true, pageErrors: errors }, null, 2));
   } finally { await context.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

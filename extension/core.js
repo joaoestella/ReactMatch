@@ -8,7 +8,7 @@ export function parseClock(text) {
 
 export function clockFromOCR(text) {
   // A crop with multiple clocks is ambiguous. Never choose one silently.
-  const candidates = String(text).trim().match(/\d{1,3}\s*:\s*\d{2}(?:\s*:\s*\d{2})?/g) || [];
+  const candidates = String(text).trim().match(/(?<![\d:])\d{1,3}\s*:\s*\d{2}(?:\s*:\s*\d{2})?(?![\d:]|\s*:)/g) || [];
   if (candidates.length !== 1) return null;
   return parseClock(candidates[0]);
 }
@@ -71,9 +71,38 @@ export function decideCorrection({ target, follower, reference, tolerance = 0.85
 
 // Clock-looking tokens ("25:40", "1:02:45") in the words OCR found on a whole
 // frame. Boxes are returned in 0..1 coordinates of the frame.
+function joinClockWords(words) {
+  const joined = [];
+  for (const word of words) {
+    const original = String(word.text);
+    const text = original.replace(/\s/g, '');
+    const symbols = word.symbols?.length === original.length
+      ? word.symbols.filter((_, i) => !/\s/.test(original[i])) : [];
+    const current = { ...word, text, symbols };
+    const previous = joined.at(-1);
+    const a = previous?.bbox, b = current.bbox;
+    // Tesseract may return "25", ":", "40" as three separate words.
+    // Join only across an explicit colon on the same nearby text line;
+    // never glue a score or a second, independent clock onto the digits.
+    if (a && b && /^[\d:]+$/.test(previous.text) && /^[\d:]+$/.test(text)
+      && (previous.text.endsWith(':') || text.startsWith(':'))
+      && (previous.lineId === undefined || current.lineId === undefined || previous.lineId === current.lineId)
+      && b.x0 >= a.x1 - 2 && b.x0 - a.x1 <= Math.max(a.y1 - a.y0, b.y1 - b.y0) * 0.8
+      && Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0) >= Math.min(a.y1 - a.y0, b.y1 - b.y0) * 0.4) {
+      joined[joined.length - 1] = {
+        ...previous, text: previous.text + text,
+        confidence: ((previous.confidence ?? 0) * previous.text.length + (word.confidence ?? 0) * text.length) / (previous.text.length + text.length),
+        bbox: { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) },
+        symbols: previous.symbols.length === previous.text.length && symbols.length === text.length ? [...previous.symbols, ...symbols] : []
+      };
+    } else joined.push(current);
+  }
+  return joined;
+}
+
 export function clockTokens(words, width, height) {
   const tokens = [];
-  for (const word of words) {
+  for (const word of joinClockWords(words)) {
     const text = String(word.text);
     for (const match of text.matchAll(/\d{1,3}:\d{2}(?::\d{2})?/g)) {
       // Reject pieces of longer numbers ("1025:30" is not a clock).
@@ -111,8 +140,9 @@ export function findClocks(frames) {
   };
   const found = [];
   for (const token of last.tokens) {
-    const track = frames.map(frame => frame.tokens.find(other => other.parts === token.parts && near(other.box, token.box)));
+    const track = frames.map(frame => frame.tokens.find(other => other.confidence >= 65 && other.parts === token.parts && near(other.box, token.box)));
     if (!track[0]) continue;
+    if (!track.at(-1)) continue;
     for (const direction of [1, -1]) {
       const ok = track.every((seen, i) => !seen || Math.abs((seen.value - track[0].value) * direction - (frames[i].time - first.time)) <= 1.2);
       const seenCount = track.filter(Boolean).length;
@@ -124,6 +154,17 @@ export function findClocks(frames) {
     }
   }
   return found.sort((a, b) => (a.parts - b.parts) || (b.box.h - a.box.h) || (b.confidence - a.confidence));
+}
+
+// Calibrate from at least three reliable, ticking observations. A blurred
+// frame is missing evidence, not a reason to discard the other four frames.
+export function calibrationReadings(readings, direction = 1) {
+  const good = readings.filter(r => Number.isFinite(r.value) && r.confidence >= 65 && !r.paused);
+  if (good.length < 3) return [];
+  const box = { x: 0, y: 0, w: 1, h: 1 };
+  const frames = good.map(r => ({ time: r.time, tokens: [{ value: r.value, confidence: r.confidence, parts: 2, box }] }));
+  if (!findClocks(frames).some(clock => clock.direction === direction)) return [];
+  return good.map(r => ({ clock: r.value, time: r.time }));
 }
 
 // Region to read for a found clock: its box with a little margin.

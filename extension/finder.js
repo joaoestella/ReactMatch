@@ -54,7 +54,9 @@ export function textBoxes({ data, width, height }, { edge = 48, gap = 0, maxBoxe
     boxes.push({ x0, y0, x1: x1 + 1, y1: y1 + 1, count, edges });
   }
   // 4. Keep blobs shaped like a short line of text.
-  const minH = Math.max(7, height / 120), maxH = height / 6;
+  // Clock overlays do not grow with the frame: a 1080p reaction can contain
+  // a clock only 7 px tall. Enlarge those crops for OCR instead of dropping them.
+  const minH = 6, maxH = height / 6;
   const kept = boxes.filter(b => {
     const w = b.x1 - b.x0, h = b.y1 - b.y0;
     if (h < minH || h > maxH || w < h * 1.2 || w > h * 25) return false;

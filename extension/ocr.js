@@ -37,7 +37,14 @@ export class LocalOCR {
   async read(image) {
     const worker = await this.setMode('clock');
     const { data } = await worker.recognize(image);
-    return { value: clockFromOCR(data.text), confidence: data.confidence, text: data.text.trim() };
+    const first = { value: clockFromOCR(data.text), confidence: data.confidence, text: data.text.trim() };
+    if (first.value !== null && first.confidence >= 65) return first;
+    // Thin, small digits on dark scoreboards need more contrast and a margin.
+    // Retry only uncertain reads, and retain the same confidence requirement.
+    const source = typeof image === 'string' ? await loadImage(image) : image;
+    const { data: retry } = await worker.recognize(prepareClock(source));
+    const second = { value: clockFromOCR(retry.text), confidence: retry.confidence, text: retry.text.trim() };
+    return second.value !== null && (first.value === null || second.confidence > first.confidence) ? second : first;
   }
   // The words of a crop holding one line of text, with boxes in crop pixels.
   async line(image) {
@@ -66,6 +73,44 @@ export function loadImage(src) {
   });
 }
 
+export function prepareClock(image) {
+  const w = image.naturalWidth || image.width, h = image.naturalHeight || image.height;
+  const scale = Math.min(8, Math.max(1, 96 / h));
+  const crop = document.createElement('canvas');
+  crop.width = Math.round(w * scale); crop.height = Math.round(h * scale);
+  const ctx = crop.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(image, 0, 0, crop.width, crop.height);
+  const pixels = ctx.getImageData(0, 0, crop.width, crop.height);
+  const histogram = new Uint32Array(256);
+  let sum = 0;
+  for (let i = 0; i < pixels.data.length; i += 4) {
+    const gray = (pixels.data[i] * 77 + pixels.data[i + 1] * 150 + pixels.data[i + 2] * 29) >> 8;
+    pixels.data[i] = gray; histogram[gray]++; sum += gray;
+  }
+  const total = crop.width * crop.height;
+  let count = 0, partial = 0, best = -1, threshold = 127;
+  for (let i = 0; i < 255; i++) {
+    count += histogram[i]; partial += i * histogram[i];
+    if (!count || count === total) continue;
+    const difference = partial / count - (sum - partial) / (total - count);
+    const variance = count * (total - count) * difference * difference;
+    if (variance > best) { best = variance; threshold = i; }
+  }
+  const darkBackground = histogram.slice(0, threshold + 1).reduce((a, b) => a + b, 0) > total / 2;
+  for (let i = 0; i < pixels.data.length; i += 4) {
+    const white = (pixels.data[i] > threshold) !== darkBackground;
+    pixels.data[i] = pixels.data[i + 1] = pixels.data[i + 2] = white ? 255 : 0;
+    pixels.data[i + 3] = 255;
+  }
+  ctx.putImageData(pixels, 0, 0);
+  const padded = document.createElement('canvas');
+  padded.width = crop.width + 24; padded.height = crop.height + 24;
+  const out = padded.getContext('2d');
+  out.fillStyle = '#fff'; out.fillRect(0, 0, padded.width, padded.height);
+  out.drawImage(crop, 12, 12);
+  return padded;
+}
+
 // Clock-looking tokens on one frame. Text lines are located first (finder.js)
 // and each is read on its own, enlarged; `lines` reuses known line positions.
 export async function scanClocks(ocr, src, lines = null) {
@@ -81,7 +126,7 @@ export async function scanClocks(ocr, src, lines = null) {
     const pad = Math.round(line.h * 0.4);
     const x = Math.max(0, line.x - pad), y = Math.max(0, line.y - pad);
     const w = Math.min(W - x, line.w + 2 * pad), h = Math.min(H - y, line.h + 2 * pad);
-    const scale = Math.min(4, Math.max(1, 64 / line.h));
+    const scale = Math.min(8, Math.max(1, 64 / line.h));
     const crop = document.createElement('canvas');
     crop.width = Math.round(w * scale); crop.height = Math.round(h * scale);
     crop.getContext('2d').drawImage(canvas, x, y, w, h, 0, 0, crop.width, crop.height);
@@ -100,7 +145,7 @@ export function cropFrame(capture) {
   }
   const width = Math.max(1, Math.round(region.w * video.videoWidth));
   const height = Math.max(1, Math.round(region.h * video.videoHeight));
-  const scale = Math.min(4, Math.max(1, 90 / height));
+  const scale = Math.min(8, Math.max(1, 90 / height));
   const canvas = document.createElement('canvas');
   canvas.width = Math.round(width * scale); canvas.height = Math.round(height * scale);
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -152,7 +197,8 @@ export async function selectRegion(dialog, still, { suggested = null, options = 
     context.drawImage(frozen, x * canvas.width, y * canvas.height, w * canvas.width, h * canvas.height, x * canvas.width, y * canvas.height, w * canvas.width, h * canvas.height);
     context.strokeStyle = '#b7f4ce'; context.lineWidth = 2;
     context.strokeRect(x * canvas.width, y * canvas.height, w * canvas.width, h * canvas.height);
-    save.disabled = w * sourceWidth < 15 || h * sourceHeight < 8;
+    // Reject empty drags, but let OCR try a tiny clock after enlargement.
+    save.disabled = w * sourceWidth < 4 || h * sourceHeight < 3;
     if (!start && region === suggested) return;
     description.textContent = save.disabled ? t('crop.bigger') : t('crop.selected');
   }
